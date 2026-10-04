@@ -3,6 +3,7 @@
 //! The same structures are used for the editable project file and (with a few
 //! derived fields added by [`crate::export`]) for the exported `layout.json`.
 
+use crate::i18n::t;
 use serde::{Deserialize, Serialize};
 
 /// An sRGB colour, serialised as `"#RRGGBB"`.
@@ -46,6 +47,19 @@ impl<'de> Deserialize<'de> for Rgb {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
         Rgb::parse(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid colour {s:?}, expected #RRGGBB")))
+    }
+}
+
+/// Palette groups (zh keys, in display order).
+pub const GROUPS: [&str; 4] = ["文字", "互動", "媒體", "版面"];
+
+/// Palette group name in the current language (`group` is the zh key).
+pub fn group_label(group: &str) -> &'static str {
+    match group {
+        "文字" => t("文字", "Text"),
+        "互動" => t("互動", "Interactive"),
+        "媒體" => t("媒體", "Media"),
+        _ => t("版面", "Layout"),
     }
 }
 
@@ -155,6 +169,12 @@ impl ElementKind {
         KindInfo { zh, en, icon, group, moviepy }
     }
 
+    /// Label in the current UI language.
+    pub fn label(self) -> &'static str {
+        let i = self.info();
+        t(i.zh, i.en)
+    }
+
     pub fn key(self) -> &'static str {
         use ElementKind::*;
         match self {
@@ -196,11 +216,11 @@ pub enum Align {
 
 impl Align {
     pub const ALL: [Align; 3] = [Align::Left, Align::Center, Align::Right];
-    pub fn zh(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Align::Left => "靠左",
-            Align::Center => "置中",
-            Align::Right => "靠右",
+            Align::Left => t("靠左", "Left"),
+            Align::Center => t("置中", "Center"),
+            Align::Right => t("靠右", "Right"),
         }
     }
 }
@@ -217,10 +237,12 @@ pub enum Animation {
     SlideLeft,
     Pop,
     Typewriter,
+    /// Moves from below the frame to above it over the element's time (credits roll).
+    ScrollUp,
 }
 
 impl Animation {
-    pub const ALL: [Animation; 8] = [
+    pub const ALL: [Animation; 9] = [
         Animation::None,
         Animation::FadeIn,
         Animation::FadeOut,
@@ -229,6 +251,7 @@ impl Animation {
         Animation::SlideLeft,
         Animation::Pop,
         Animation::Typewriter,
+        Animation::ScrollUp,
     ];
     pub fn key(self) -> &'static str {
         match self {
@@ -240,18 +263,20 @@ impl Animation {
             Animation::SlideLeft => "slide_left",
             Animation::Pop => "pop",
             Animation::Typewriter => "typewriter",
+            Animation::ScrollUp => "scroll_up",
         }
     }
-    pub fn zh(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Animation::None => "無",
-            Animation::FadeIn => "淡入",
-            Animation::FadeOut => "淡出",
-            Animation::FadeInOut => "淡入淡出",
-            Animation::SlideUp => "由下滑入",
-            Animation::SlideLeft => "由右滑入",
-            Animation::Pop => "彈出放大",
-            Animation::Typewriter => "打字機",
+            Animation::None => t("無", "None"),
+            Animation::FadeIn => t("淡入", "Fade in"),
+            Animation::FadeOut => t("淡出", "Fade out"),
+            Animation::FadeInOut => t("淡入淡出", "Fade in/out"),
+            Animation::SlideUp => t("由下滑入", "Slide up"),
+            Animation::SlideLeft => t("由右滑入", "Slide from right"),
+            Animation::Pop => t("彈出放大", "Pop"),
+            Animation::Typewriter => t("打字機", "Typewriter"),
+            Animation::ScrollUp => t("向上捲動（名單）", "Scroll up (credits)"),
         }
     }
 }
@@ -267,11 +292,11 @@ pub enum ShapeKind {
 
 impl ShapeKind {
     pub const ALL: [ShapeKind; 3] = [ShapeKind::Rect, ShapeKind::Rounded, ShapeKind::Circle];
-    pub fn zh(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            ShapeKind::Rect => "矩形",
-            ShapeKind::Rounded => "圓角矩形",
-            ShapeKind::Circle => "圓形/橢圓",
+            ShapeKind::Rect => t("矩形", "Rectangle"),
+            ShapeKind::Rounded => t("圓角矩形", "Rounded rect"),
+            ShapeKind::Circle => t("圓形/橢圓", "Circle / ellipse"),
         }
     }
 }
@@ -288,12 +313,12 @@ pub enum Direction {
 
 impl Direction {
     pub const ALL: [Direction; 4] = [Direction::Left, Direction::Right, Direction::Up, Direction::Down];
-    pub fn zh(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Direction::Left => "← 向左",
-            Direction::Right => "→ 向右",
-            Direction::Up => "↑ 向上",
-            Direction::Down => "↓ 向下",
+            Direction::Left => t("← 向左", "← Left"),
+            Direction::Right => t("→ 向右", "→ Right"),
+            Direction::Up => t("↑ 向上", "↑ Up"),
+            Direction::Down => t("↓ 向下", "↓ Down"),
         }
     }
 }
@@ -368,7 +393,7 @@ pub struct Element {
 }
 
 fn default_font_size() -> f32 {
-    48.0
+    33.0
 }
 fn default_font_color() -> Rgb {
     Rgb::WHITE
@@ -386,30 +411,58 @@ impl Element {
         use ElementKind::*;
         let u = cw.min(ch) / 1080.0; // unit: 1 px at 1080p short side
         let (w, h, text, fs, fc, bg, op): (f32, f32, &str, f32, Rgb, Rgb, f32) = match kind {
-            Background => (cw, ch, "背景", 40.0, Rgb::gray(90), Rgb::gray(225), 1.0),
-            Title => (1100.0, 150.0, "主標題文字", 96.0, Rgb::gray(20), Rgb::gray(200), 0.0),
-            Subheading => (900.0, 90.0, "副標題說明文字", 54.0, Rgb::gray(50), Rgb::gray(200), 0.0),
-            Subtitle => (1400.0, 100.0, "這裡是字幕，一行約 18 字", 52.0, Rgb::WHITE, Rgb::BLACK, 0.45),
-            TextCard => (900.0, 420.0, "字卡重點\n第二行說明", 60.0, Rgb::gray(30), Rgb::gray(245), 0.92),
-            Options => (760.0, 420.0, "", 44.0, Rgb::gray(30), Rgb::gray(240), 0.95),
-            LowerThird => (720.0, 140.0, "姓名 Name\n職稱 / 頻道", 44.0, Rgb::WHITE, Rgb::gray(40), 0.88),
-            MediaPlaceholder => (800.0, 450.0, "圖片 / 影片", 44.0, Rgb::gray(70), Rgb::gray(185), 1.0),
-            Logo => (220.0, 120.0, "LOGO", 40.0, Rgb::gray(70), Rgb::gray(205), 1.0),
-            AvatarFrame => (320.0, 320.0, "主持人", 36.0, Rgb::gray(60), Rgb::gray(195), 1.0),
-            ProgressBar => (1600.0, 24.0, "", 24.0, Rgb([250, 180, 40]), Rgb::gray(90), 0.8),
-            Countdown => (180.0, 180.0, "10", 90.0, Rgb::gray(20), Rgb::gray(235), 0.95),
-            Watermark => (360.0, 60.0, "@my_channel", 34.0, Rgb::gray(110), Rgb::gray(0), 0.0),
-            CtaButton => (420.0, 110.0, "立即訂閱 ▶", 50.0, Rgb::WHITE, Rgb([220, 60, 60]), 1.0),
-            CalloutArrow => (360.0, 140.0, "看這裡！", 40.0, Rgb::gray(20), Rgb([255, 210, 60]), 1.0),
-            Shape => (300.0, 300.0, "", 36.0, Rgb::gray(60), Rgb::gray(175), 1.0),
-            QrCode => (240.0, 240.0, "QR", 32.0, Rgb::gray(20), Rgb::WHITE, 1.0),
-            Sticker => (160.0, 160.0, "★", 96.0, Rgb([250, 190, 30]), Rgb::gray(235), 0.0),
+            Background => (cw, ch, t("背景", "Background"), 28.0, Rgb::gray(90), Rgb::gray(225), 1.0),
+            Title => (1100.0, 150.0, t("主標題文字", "Main title"), 66.0, Rgb::gray(20), Rgb::gray(200), 0.0),
+            Subheading => {
+                (900.0, 90.0, t("副標題說明文字", "Subheading text"), 37.0, Rgb::gray(50), Rgb::gray(200), 0.0)
+            }
+            Subtitle => (
+                1400.0,
+                100.0,
+                t("這裡是字幕，一行約 18 字", "Subtitle line goes here"),
+                36.0,
+                Rgb::WHITE,
+                Rgb::BLACK,
+                0.45,
+            ),
+            TextCard => (
+                900.0,
+                420.0,
+                t("字卡重點\n第二行說明", "Key point\nSecond line"),
+                41.0,
+                Rgb::gray(30),
+                Rgb::gray(245),
+                0.92,
+            ),
+            Options => (760.0, 420.0, "", 30.0, Rgb::gray(30), Rgb::gray(240), 0.95),
+            LowerThird => (
+                720.0,
+                140.0,
+                t("姓名 Name\n職稱 / 頻道", "Name\nTitle / channel"),
+                30.0,
+                Rgb::WHITE,
+                Rgb::gray(40),
+                0.88,
+            ),
+            MediaPlaceholder => {
+                (800.0, 450.0, t("圖片 / 影片", "Image / video"), 30.0, Rgb::gray(70), Rgb::gray(185), 1.0)
+            }
+            Logo => (220.0, 120.0, "LOGO", 28.0, Rgb::gray(70), Rgb::gray(205), 1.0),
+            AvatarFrame => (320.0, 320.0, t("主持人", "Host"), 25.0, Rgb::gray(60), Rgb::gray(195), 1.0),
+            ProgressBar => (1600.0, 24.0, "", 17.0, Rgb([250, 180, 40]), Rgb::gray(90), 0.8),
+            Countdown => (180.0, 180.0, "10", 62.0, Rgb::gray(20), Rgb::gray(235), 0.95),
+            Watermark => (360.0, 60.0, "@my_channel", 23.0, Rgb::gray(110), Rgb::gray(0), 0.0),
+            CtaButton => (420.0, 110.0, t("立即訂閱 ▶", "Subscribe ▶"), 34.0, Rgb::WHITE, Rgb([220, 60, 60]), 1.0),
+            CalloutArrow => (360.0, 140.0, t("看這裡！", "Look here!"), 28.0, Rgb::gray(20), Rgb([255, 210, 60]), 1.0),
+            Shape => (300.0, 300.0, "", 25.0, Rgb::gray(60), Rgb::gray(175), 1.0),
+            QrCode => (240.0, 240.0, "QR", 22.0, Rgb::gray(20), Rgb::WHITE, 1.0),
+            Sticker => (160.0, 160.0, "★", 66.0, Rgb([250, 190, 30]), Rgb::gray(235), 0.0),
         };
         let (w, h) = if kind == Background { (w, h) } else { ((w * u).min(cw), (h * u).min(ch)) };
         let (x, y) = if kind == Background { (0.0, 0.0) } else { (cx - w / 2.0, cy - h / 2.0) };
         let mut e = Element {
             id,
-            name: kind.info().zh.to_string(),
+            name: kind.label().to_string(),
             kind,
             x: x.round(),
             y: y.round(),
@@ -439,7 +492,13 @@ impl Element {
         match kind {
             Subtitle => e.stroke_width = (3.0 * u).round(),
             Options => {
-                e.options = ["選項 A", "選項 B", "選項 C", "選項 D"].map(String::from).to_vec();
+                e.options = if crate::i18n::is_en() {
+                    ["Option A", "Option B", "Option C", "Option D"]
+                } else {
+                    ["選項 A", "選項 B", "選項 C", "選項 D"]
+                }
+                .map(String::from)
+                .to_vec();
                 e.align = Align::Left;
             }
             LowerThird => {
@@ -468,6 +527,127 @@ impl Element {
     }
 }
 
+/// How a scene enters (transition from the previous scene). The transition
+/// happens during the first `duration` seconds of the scene, so it never changes
+/// scene start times or the total length.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransitionKind {
+    #[default]
+    None,
+    Crossfade,
+    FadeBlack,
+    SlideLeft,
+    SlideUp,
+    Wipe,
+    Zoom,
+}
+
+impl TransitionKind {
+    pub const ALL: [TransitionKind; 7] = [
+        TransitionKind::None,
+        TransitionKind::Crossfade,
+        TransitionKind::FadeBlack,
+        TransitionKind::SlideLeft,
+        TransitionKind::SlideUp,
+        TransitionKind::Wipe,
+        TransitionKind::Zoom,
+    ];
+    pub fn key(self) -> &'static str {
+        match self {
+            TransitionKind::None => "none",
+            TransitionKind::Crossfade => "crossfade",
+            TransitionKind::FadeBlack => "fade_black",
+            TransitionKind::SlideLeft => "slide_left",
+            TransitionKind::SlideUp => "slide_up",
+            TransitionKind::Wipe => "wipe",
+            TransitionKind::Zoom => "zoom",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            TransitionKind::None => t("無（直接切換）", "None (hard cut)"),
+            TransitionKind::Crossfade => t("交叉淡化", "Crossfade"),
+            TransitionKind::FadeBlack => t("黑場淡入", "Fade through black"),
+            TransitionKind::SlideLeft => t("由右推入", "Slide in from right"),
+            TransitionKind::SlideUp => t("由下推入", "Slide in from bottom"),
+            TransitionKind::Wipe => t("擦除（左→右）", "Wipe (left → right)"),
+            TransitionKind::Zoom => t("放大淡入", "Zoom in + fade"),
+        }
+    }
+    /// One-line description for the agent docs.
+    pub fn describe(self) -> &'static str {
+        match self {
+            TransitionKind::None => t("直接切換，沒有轉場", "hard cut, no transition"),
+            TransitionKind::Crossfade => t(
+                "新場景從透明淡入，蓋在上一場景最後一格上",
+                "the new scene fades in over the last frame of the previous scene",
+            ),
+            TransitionKind::FadeBlack => t("從全黑淡入新場景", "the new scene fades in from black"),
+            TransitionKind::SlideLeft => t(
+                "新場景從畫面右側推入，蓋住上一場景最後一格",
+                "the new scene slides in from the right over the previous scene's last frame",
+            ),
+            TransitionKind::SlideUp => t(
+                "新場景從畫面下方推入，蓋住上一場景最後一格",
+                "the new scene slides in from the bottom over the previous scene's last frame",
+            ),
+            TransitionKind::Wipe => t(
+                "一條垂直邊界由左往右掃過，逐步露出新場景",
+                "a vertical edge sweeps left → right revealing the new scene",
+            ),
+            TransitionKind::Zoom => {
+                t("新場景從 70% 大小放大到 100% 並同時淡入", "the new scene scales 70% → 100% while fading in")
+            }
+        }
+    }
+    pub fn moviepy(self) -> &'static str {
+        match self {
+            TransitionKind::None => "",
+            TransitionKind::Crossfade => {
+                "scene.with_effects([vfx.CrossFadeIn(d)]) composited over prev.to_ImageClip(prev.duration - 1/fps)"
+            }
+            TransitionKind::FadeBlack => "scene.with_effects([vfx.FadeIn(d)])",
+            TransitionKind::SlideLeft => {
+                "scene.with_position(lambda t: (W * max(0, 1 - t / d), 0)) over prev last frame"
+            }
+            TransitionKind::SlideUp => "scene.with_position(lambda t: (0, H * max(0, 1 - t / d))) over prev last frame",
+            TransitionKind::Wipe => {
+                "scene.with_mask(VideoClip(lambda t: mask with x < W * t / d, is_mask=True)) over prev last frame"
+            }
+            TransitionKind::Zoom => "scene.resized(lambda t: 0.7 + 0.3 * min(1, t / d)) centred + CrossFadeIn(d)",
+        }
+    }
+}
+
+fn default_transition_duration() -> f32 {
+    0.6
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Transition {
+    #[serde(rename = "type", default)]
+    pub kind: TransitionKind,
+    /// Seconds (taken from the start of the scene).
+    #[serde(default = "default_transition_duration")]
+    pub duration: f32,
+}
+
+impl Default for Transition {
+    fn default() -> Self {
+        Transition { kind: TransitionKind::None, duration: default_transition_duration() }
+    }
+}
+
+impl Transition {
+    pub fn new(kind: TransitionKind, duration: f32) -> Transition {
+        Transition { kind, duration }
+    }
+    pub fn is_none(&self) -> bool {
+        self.kind == TransitionKind::None
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Scene {
     pub id: String,
@@ -479,6 +659,9 @@ pub struct Scene {
     pub background: Rgb,
     #[serde(default)]
     pub notes: String,
+    /// Transition *into* this scene (ignored for the first scene).
+    #[serde(default, skip_serializing_if = "Transition::is_none")]
+    pub transition: Transition,
     #[serde(default)]
     pub elements: Vec<Element>,
 }
@@ -489,7 +672,15 @@ fn default_scene_bg() -> Rgb {
 
 impl Scene {
     pub fn new(id: String, name: String) -> Scene {
-        Scene { id, name, duration: 5.0, background: default_scene_bg(), notes: String::new(), elements: vec![] }
+        Scene {
+            id,
+            name,
+            duration: 5.0,
+            background: default_scene_bg(),
+            notes: String::new(),
+            transition: Transition::default(),
+            elements: vec![],
+        }
     }
     pub fn find(&self, id: &str) -> Option<usize> {
         self.elements.iter().position(|e| e.id == id)
@@ -500,17 +691,48 @@ impl Scene {
 pub struct AspectPreset {
     pub key: &'static str,
     pub label: &'static str,
+    pub label_en: &'static str,
     pub width: u32,
     pub height: u32,
 }
 
 pub const PRESETS: [AspectPreset; 5] = [
-    AspectPreset { key: "16:9", label: "16:9 橫式 1920×1080", width: 1920, height: 1080 },
-    AspectPreset { key: "9:16", label: "9:16 直式 1080×1920", width: 1080, height: 1920 },
-    AspectPreset { key: "1:1", label: "1:1 方形 1080×1080", width: 1080, height: 1080 },
-    AspectPreset { key: "4:5", label: "4:5 直式 1080×1350", width: 1080, height: 1350 },
-    AspectPreset { key: "4:3", label: "4:3 1440×1080", width: 1440, height: 1080 },
+    AspectPreset {
+        key: "16:9",
+        label: "16:9 橫式 1920×1080",
+        label_en: "16:9 landscape 1920×1080",
+        width: 1920,
+        height: 1080,
+    },
+    AspectPreset {
+        key: "9:16",
+        label: "9:16 直式 1080×1920",
+        label_en: "9:16 portrait 1080×1920",
+        width: 1080,
+        height: 1920,
+    },
+    AspectPreset {
+        key: "1:1",
+        label: "1:1 方形 1080×1080",
+        label_en: "1:1 square 1080×1080",
+        width: 1080,
+        height: 1080,
+    },
+    AspectPreset {
+        key: "4:5",
+        label: "4:5 直式 1080×1350",
+        label_en: "4:5 portrait 1080×1350",
+        width: 1080,
+        height: 1350,
+    },
+    AspectPreset { key: "4:3", label: "4:3 1440×1080", label_en: "4:3 1440×1080", width: 1440, height: 1080 },
 ];
+
+impl AspectPreset {
+    pub fn label(&self) -> &'static str {
+        t(self.label, self.label_en)
+    }
+}
 
 pub fn preset(key: &str) -> Option<AspectPreset> {
     PRESETS.iter().copied().find(|p| p.key == key)
@@ -543,13 +765,20 @@ pub struct Project {
 fn default_version() -> u32 {
     1
 }
+
+/// Project format version. v2: `font_size` is the em size in pixels (CSS / Pillow /
+/// MoviePy semantics). v1 files measured the ascent-to-descent height instead, so
+/// their font sizes are scaled by [`V1_FONT_FACTOR`] when loaded.
+pub const PROJECT_VERSION: u32 = 2;
+/// em / (ascent − descent) of the bundled Noto Sans CJK font (1000 / 1448).
+pub const V1_FONT_FACTOR: f32 = 0.69;
 fn default_fps() -> u32 {
     30
 }
 
 impl Default for Project {
     fn default() -> Self {
-        Project::new("未命名專案", "16:9")
+        Project::new(t("未命名專案", "Untitled project"), "16:9")
     }
 }
 
@@ -557,11 +786,11 @@ impl Project {
     pub fn new(name: &str, preset_key: &str) -> Project {
         let p = preset(preset_key).unwrap_or(PRESETS[0]);
         Project {
-            version: 1,
+            version: PROJECT_VERSION,
             name: name.to_string(),
             canvas: Canvas { width: p.width, height: p.height, preset: p.key.to_string() },
             fps: 30,
-            scenes: vec![Scene::new("scene_1".into(), "場景 1".into())],
+            scenes: vec![Scene::new("scene_1".into(), tf!("場景 1", "Scene 1"))],
         }
     }
 
@@ -606,12 +835,16 @@ impl Project {
         self.canvas.width = self.canvas.width.clamp(16, 8192);
         self.canvas.height = self.canvas.height.clamp(16, 8192);
         if self.scenes.is_empty() {
-            self.scenes.push(Scene::new("scene_1".into(), "場景 1".into()));
+            self.scenes.push(Scene::new("scene_1".into(), tf!("場景 1", "Scene 1")));
         }
         for s in &mut self.scenes {
             if s.duration.is_nan() || s.duration <= 0.0 {
                 s.duration = 1.0;
             }
+            if !s.transition.duration.is_finite() {
+                s.transition.duration = default_transition_duration();
+            }
+            s.transition.duration = s.transition.duration.clamp(0.1, s.duration.max(0.1));
             for (i, e) in s.elements.iter_mut().enumerate() {
                 e.z = i as i32;
                 e.w = e.w.max(1.0);
@@ -654,7 +887,13 @@ impl Project {
     }
 
     pub fn from_json(s: &str) -> Result<Project, String> {
-        let mut p: Project = serde_json::from_str(s).map_err(|e| format!("JSON 解析失敗: {e}"))?;
+        let mut p: Project = serde_json::from_str(s).map_err(|e| tf!("JSON 解析失敗: {e}", "JSON parse error: {e}"))?;
+        if p.version < 2 {
+            for e in p.scenes.iter_mut().flat_map(|s| s.elements.iter_mut()) {
+                e.font_size = (e.font_size * V1_FONT_FACTOR).round().max(6.0);
+            }
+            p.version = PROJECT_VERSION;
+        }
         p.normalize();
         Ok(p)
     }

@@ -1,19 +1,18 @@
 # AGENT_GUIDE — MoviePy 小測驗（範例）
 
-> 由 whitebox-video-storyboard 0.2.0 自動產生。本文件告訴 AI Agent 如何依照白模草稿（`scene_*.png`）與 `layout.json`，
+> 由 whitebox-video-storyboard 0.3.0 自動產生。本文件告訴 AI Agent 如何依照白模草稿（`scene_*.png`）與 `layout.json`，
 > 使用 **Python MoviePy v2**（`moviepy>=2`）把畫面配置成影片。
-> Generated file — tells an agent how to build this video with MoviePy v2 from `layout.json`.
 
-## 1. 你的任務 / Task
+## 1. 你的任務
 
 1. 讀取 `layout.json`（權威資料來源；PNG 只是視覺參考）。
 2. 每個 scene 依序播放；每個 element 依 `z` 由小到大疊在該 scene 的畫面上。
 3. 位置 `x,y` 為元件**左上角**像素座標，大小 `w,h`；時間 `start/end` 相對於該 scene 起點（秒）。
 4. 灰色白模只是佔位：若 `src` 有素材路徑就換成真實素材；文字直接使用 `text`。
-5. 依 `animation` 欄位加上動畫（對照第 5 節）。
+5. 依 `animation` 欄位加上動畫（第 5 節），依 scene 的 `transition` 加上轉場（第 6 節）。
 6. 可以先直接執行 `python render_moviepy.py layout.json -o draft.mp4 --preview` 產生佔位版影片，再在其上替換素材、加上配音／音樂。
 
-## 2. 檔案 / Files
+## 2. 檔案
 
 | 檔案 | 用途 |
 |---|---|
@@ -27,18 +26,18 @@
 | `storyboard.md` | 純文字版面說明：不看圖也能理解每個元件的位置、大小、文字、時間與動畫 |
 | `render_moviepy.py` | 讀取 layout.json 直接合成佔位影片的參考實作（moviepy>=2） |
 
-## 3. 畫布與時間軸 / Canvas & timeline
+## 3. 畫布與時間軸
 
 - 解析度 **1920×1080**（16:9），**30 fps**，總長 **14.00 秒**，共 3 個場景。
 - 座標原點在左上角；Title-safe = 內縮 10%（192, 108, 1536, 864），Action-safe = 內縮 5%。重要文字請放在 title-safe 內。
 
-| # | scene id | 名稱 | 開始 | 結束 | 長度 | 背景 | 元件數 | 備註 |
-|---|---|---|---|---|---|---|---|---|
-| 1 | `scene_1` | 開場 | 0.00s | 4.00s | 4.00s | `#E8E8E8` | 6 | 開場：標題淡入，主持人自我介紹。 |
-| 2 | `scene_2` | 題目 | 4.00s | 10.00s | 6.00s | `#E1E1E1` | 7 | 出題：選項依序出現，倒數 5 秒，進度條跑完。 |
-| 3 | `scene_3` | 結尾 | 10.00s | 14.00s | 4.00s | `#ECECEC` | 7 | 結尾：公布答案、放精華片段、引導訂閱。 |
+| # | scene id | 名稱 | 開始 | 結束 | 長度 | 轉場進入 | 背景 | 元件數 | 備註 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | `scene_1` | 開場 | 0.00s | 4.00s | 4.00s | — | `#E8E8E8` | 6 | 開場：標題淡入，主持人自我介紹。 |
+| 2 | `scene_2` | 題目 | 4.00s | 10.00s | 6.00s | `crossfade` 0.60s | `#E1E1E1` | 7 | 出題：選項依序出現，倒數 5 秒，進度條跑完。 |
+| 3 | `scene_3` | 結尾 | 10.00s | 14.00s | 4.00s | `slide_left` 0.50s | `#ECECEC` | 7 | 結尾：公布答案、放精華片段、引導訂閱。 |
 
-## 4. 元件類型 → MoviePy 對應 / Element type mapping
+## 4. 元件類型 → MoviePy 對應
 
 共通步驟（每個 element）：
 
@@ -216,7 +215,7 @@ ColorClip((w, h), color=hex_rgb(el['bg_color'])).with_opacity(el['bg_opacity']) 
 # circle / rounded: draw RGBA with PIL (ellipse / rounded_rectangle) and wrap in ImageClip
 ```
 
-## 5. 動畫提示 / Animation hints
+## 5. 動畫提示
 
 | animation | 中文 | MoviePy v2 |
 |---|---|---|
@@ -226,12 +225,28 @@ ColorClip((w, h), color=hex_rgb(el['bg_color'])).with_opacity(el['bg_opacity']) 
 | `fade_in_out` | 淡入淡出 | `[vfx.CrossFadeIn(0.5), vfx.CrossFadeOut(0.5)]` |
 | `slide_up` | 由下滑入 | `clip.with_position(lambda t: (x, y + off * (1 - ease(t / 0.5))))` + CrossFadeIn |
 | `slide_left` | 由右滑入 | `clip.with_position(lambda t: (x + off * (1 - ease(t / 0.5)), y))` + CrossFadeIn |
-| `pop` | 彈出放大 | `clip.resized(lambda t: 0.5 + 0.5 * ease(t / 0.35))`，位置同步修正以保持中心不動 |
-| `typewriter` | 打字機 | 逐字建立 TextClip，或用 mask 由左至右擦出（`mask.transform(...)`） |
+| `pop` | 彈出放大 | `clip.resized(lambda t: 0.5 + 0.5 * ease(t / 0.35))` (keep the centre fixed) |
+| `typewriter` | 打字機 | per-character TextClips, or a left→right mask (`mask.transform(...)`) |
+| `scroll_up` | 向上捲動（名單） | `clip.with_position(lambda t: (x, H - (H + h) * t / dur))` — the box sets x and width |
 
 `ease = lambda p: 1 - (1 - min(1, max(0, p))) ** 3`。CrossFadeIn/Out 作用在 mask 上，適合疊加層；`vfx.FadeIn` 是從黑色淡入，只適合整個場景。
 
-## 6. 中文字型 / CJK font
+## 6. 場景轉場
+
+每個 scene 的 `transition`（`type`、`duration`）是**進入該場景**的轉場。轉場發生在該場景開頭 `duration` 秒內，疊在上一個場景最後一格（`prev.to_ImageClip(prev.duration - 1/fps)`）之上，所以**不改變場景起點與總長**。第一個場景只允許 `fade_black`。
+
+| type | 效果 | MoviePy v2 |
+|---|---|---|
+| `crossfade` | 新場景從透明淡入，蓋在上一場景最後一格上 | `scene.with_effects([vfx.CrossFadeIn(d)]) composited over prev.to_ImageClip(prev.duration - 1/fps)` |
+| `fade_black` | 從全黑淡入新場景 | `scene.with_effects([vfx.FadeIn(d)])` |
+| `slide_left` | 新場景從畫面右側推入，蓋住上一場景最後一格 | `scene.with_position(lambda t: (W * max(0, 1 - t / d), 0)) over prev last frame` |
+| `slide_up` | 新場景從畫面下方推入，蓋住上一場景最後一格 | `scene.with_position(lambda t: (0, H * max(0, 1 - t / d))) over prev last frame` |
+| `wipe` | 一條垂直邊界由左往右掃過，逐步露出新場景 | `scene.with_mask(VideoClip(lambda t: mask with x < W * t / d, is_mask=True)) over prev last frame` |
+| `zoom` | 新場景從 70% 大小放大到 100% 並同時淡入 | `scene.resized(lambda t: 0.7 + 0.3 * min(1, t / d)) centred + CrossFadeIn(d)` |
+
+本專案使用：2 → `crossfade` 0.60s, 3 → `slide_left` 0.50s
+
+## 7. 中文字型
 
 `TextClip(font=...)` 必須指定**含中文字形的字型檔路徑**，否則中文會變成方塊（tofu）。
 
@@ -241,7 +256,7 @@ ColorClip((w, h), color=hex_rgb(el['bg_color'])).with_opacity(el['bg_opacity']) 
 - MoviePy 的 `method='caption'` 會自動換行；若要精準控制中英混排換行，可先自行斷行再用 `method='label'`（`render_moviepy.py` 的 `wrap_text()` 即此做法）。
 - MoviePy 2.x 對 ascent 很大的字型（如 Noto CJK）用固定 `size=(w, h)` 時字尾可能被裁掉；可給較高的 TextClip 再自行垂直置中（見 `render_moviepy.py` 的 `_text_once()`）。
 
-## 7. 逐場景元件清單 / Scene-by-scene elements
+## 8. 逐場景元件清單
 
 ### 場景 1 — 開場（`scene_1`，0.00s → 4.00s，長 4.00s）
 
@@ -251,46 +266,50 @@ ColorClip((w, h), color=hex_rgb(el['bg_color'])).with_opacity(el['bg_opacity']) 
 
 | z | id | type | 文字 / 內容 | x, y, w, h | 時間（場景內） | 動畫 | 樣式 | 備註 |
 |---|---|---|---|---|---|---|---|---|
-| 0 | `logo_1` | `logo` | LOGO | 96, 64, 220, 110 | 0.00–4.00s | `none` | 40px #464646 / bg #CDCDCD α1.00 |  |
-| 1 | `title_1` | `title` | 三分鐘學會 MoviePy 排版 | 360, 330, 1200, 160 | 0.30–4.00s | `fade_in` | 100px #141414 / bg #C8C8C8 α0.00 |  |
-| 2 | `subheading_1` | `subheading` | 白模草稿 → layout.json → 自動合成影片 | 460, 500, 1000, 90 | 0.80–4.00s | `slide_up` | 54px #323232 / bg #C8C8C8 α0.00 |  |
-| 3 | `avatar_frame_1` | `avatar_frame` | 主持人 | 1500, 700, 300, 300 | 0.00–4.00s | `none` | 36px #3C3C3C / bg #C3C3C3 α1.00 |  |
-| 4 | `lower_third_1` | `lower_third` | Ke Sheng Da ⏎ 影片創作者 · 自動化剪輯 | 96, 820, 720, 140 | 1.00–3.80s | `slide_left` | 44px #FFFFFF / bg #282828 α0.88 |  |
-| 5 | `watermark_1` | `watermark` | @my_channel | 1464, 64, 360, 60 | 0.00–4.00s | `none` | 34px #6E6E6E / bg #000000 α0.00 |  |
+| 0 | `logo_1` | `logo` | LOGO | 96, 64, 220, 110 | 0.00–4.00s | `none` | 28px #464646 / bg #CDCDCD α1.00 |  |
+| 1 | `title_1` | `title` | 三分鐘學會 MoviePy 排版 | 360, 330, 1200, 160 | 0.30–4.00s | `fade_in` | 69px #141414 / bg #C8C8C8 α0.00 |  |
+| 2 | `subheading_1` | `subheading` | 白模草稿 → layout.json → 自動合成影片 | 460, 500, 1000, 90 | 0.80–4.00s | `slide_up` | 37px #323232 / bg #C8C8C8 α0.00 |  |
+| 3 | `avatar_frame_1` | `avatar_frame` | 主持人 | 1500, 700, 300, 300 | 0.00–4.00s | `none` | 25px #3C3C3C / bg #C3C3C3 α1.00 |  |
+| 4 | `lower_third_1` | `lower_third` | Ke Sheng Da ⏎ 影片創作者 · 自動化剪輯 | 96, 820, 720, 140 | 1.00–3.80s | `slide_left` | 30px #FFFFFF / bg #282828 α0.88 |  |
+| 5 | `watermark_1` | `watermark` | @my_channel | 1464, 64, 360, 60 | 0.00–4.00s | `none` | 23px #6E6E6E / bg #000000 α0.00 |  |
 
 ### 場景 2 — 題目（`scene_2`，4.00s → 10.00s，長 6.00s）
 
 ![scene_2](scene_02_scene_2.png)
 
+轉場進入：`crossfade` 0.60 秒 — 新場景從透明淡入，蓋在上一場景最後一格上（發生在本場景開頭 0.60 秒內，不改變時間軸）
+
 備註：出題：選項依序出現，倒數 5 秒，進度條跑完。
 
 | z | id | type | 文字 / 內容 | x, y, w, h | 時間（場景內） | 動畫 | 樣式 | 備註 |
 |---|---|---|---|---|---|---|---|---|
-| 0 | `text_card_1` | `text_card` | Q1. 下列哪一個是 ⏎ MoviePy v2 設定位置的寫法？ | 96, 140, 800, 560 | 0.00–6.00s | `fade_in` | 58px #1E1E1E / bg #F5F5F5 α0.92 |  |
-| 1 | `options_1` | `options` | A. clip.set_pos(...) / B. clip.with_position(...) ✔ / C. clip.position = ... / D. clip.move(...) | 1040, 140, 780, 560 | 0.50–6.00s | `slide_left` | 44px #1E1E1E / bg #F0F0F0 α0.95 |  |
-| 2 | `countdown_1` | `countdown` | 5 | 1640, 760, 170, 170 | 1.00–6.00s | `none` | 90px #141414 / bg #EBEBEB α0.95 |  |
-| 3 | `callout_arrow_1` | `callout_arrow` | 倒數中！ | 1260, 760, 360, 130 | 1.00–6.00s | `pop` | 40px #141414 / bg #FFD23C α1.00 |  |
-| 4 | `subtitle_1` | `subtitle` | 請在倒數結束前，選出正確答案 | 260, 900, 1400, 90 | 0.00–6.00s | `none` | 52px #FFFFFF / bg #000000 α0.45 / 描邊 3px #000000 |  |
-| 5 | `progress_bar_1` | `progress_bar` |  | 0, 1050, 1920, 30 | 0.00–6.00s | `none` | 24px #FAB428 / bg #5A5A5A α0.60 |  |
-| 6 | `sticker_1` | `sticker` | ？ | 900, 20, 120, 120 | 0.00–6.00s | `none` | 96px #FABE1E / bg #EBEBEB α0.00 |  |
+| 0 | `text_card_1` | `text_card` | Q1. 下列哪一個是 ⏎ MoviePy v2 設定位置的寫法？ | 96, 140, 800, 560 | 0.00–6.00s | `fade_in` | 40px #1E1E1E / bg #F5F5F5 α0.92 |  |
+| 1 | `options_1` | `options` | A. clip.set_pos(...) / B. clip.with_position(...) ✔ / C. clip.position = ... / D. clip.move(...) | 1040, 140, 780, 560 | 0.50–6.00s | `slide_left` | 30px #1E1E1E / bg #F0F0F0 α0.95 |  |
+| 2 | `countdown_1` | `countdown` | 5 | 1640, 760, 170, 170 | 1.00–6.00s | `none` | 62px #141414 / bg #EBEBEB α0.95 |  |
+| 3 | `callout_arrow_1` | `callout_arrow` | 倒數中！ | 1260, 760, 360, 130 | 1.00–6.00s | `pop` | 28px #141414 / bg #FFD23C α1.00 |  |
+| 4 | `subtitle_1` | `subtitle` | 請在倒數結束前，選出正確答案 | 260, 900, 1400, 90 | 0.00–6.00s | `none` | 36px #FFFFFF / bg #000000 α0.45 / 描邊 3px #000000 |  |
+| 5 | `progress_bar_1` | `progress_bar` |  | 0, 1050, 1920, 30 | 0.00–6.00s | `none` | 17px #FAB428 / bg #5A5A5A α0.60 |  |
+| 6 | `sticker_1` | `sticker` | ？ | 900, 20, 120, 120 | 0.00–6.00s | `none` | 66px #FABE1E / bg #EBEBEB α0.00 |  |
 
 ### 場景 3 — 結尾（`scene_3`，10.00s → 14.00s，長 4.00s）
 
 ![scene_3](scene_03_scene_3.png)
 
+轉場進入：`slide_left` 0.50 秒 — 新場景從畫面右側推入，蓋住上一場景最後一格（發生在本場景開頭 0.50 秒內，不改變時間軸）
+
 備註：結尾：公布答案、放精華片段、引導訂閱。
 
 | z | id | type | 文字 / 內容 | x, y, w, h | 時間（場景內） | 動畫 | 樣式 | 備註 |
 |---|---|---|---|---|---|---|---|---|
-| 0 | `media_placeholder_1` | `media_placeholder` | 精華片段 B-roll [src: assets/broll.mp4] | 96, 120, 960, 540 | 0.00–4.00s | `none` | 44px #464646 / bg #B9B9B9 α1.00 |  |
-| 1 | `title_2` | `title` | 答案：B | 1120, 160, 700, 130 | 0.00–4.00s | `pop` | 96px #141414 / bg #C8C8C8 α0.00 |  |
-| 2 | `subheading_2` | `subheading` | v2 統一用 with_* 方法回傳新的 clip | 1120, 300, 700, 140 | 0.00–4.00s | `none` | 46px #323232 / bg #C8C8C8 α0.00 |  |
-| 3 | `cta_button_1` | `cta_button` | 立即訂閱 ▶ | 1120, 500, 440, 110 | 1.00–4.00s | `pop` | 50px #FFFFFF / bg #DC3C3C α1.00 |  |
-| 4 | `qr_code_1` | `qr_code` | QR | 1600, 470, 220, 220 | 0.00–4.00s | `none` | 32px #141414 / bg #FFFFFF α1.00 |  |
-| 5 | `shape_1` | `shape` |  | 96, 720, 960, 12 | 0.00–4.00s | `none` | 36px #3C3C3C / bg #FAB428 α1.00 |  |
-| 6 | `subtitle_2` | `subtitle` | 我們下一集見！ | 260, 900, 1400, 90 | 0.00–4.00s | `none` | 52px #FFFFFF / bg #000000 α0.45 / 描邊 3px #000000 |  |
+| 0 | `media_placeholder_1` | `media_placeholder` | 精華片段 B-roll [src: assets/broll.mp4] | 96, 120, 960, 540 | 0.00–4.00s | `none` | 30px #464646 / bg #B9B9B9 α1.00 |  |
+| 1 | `title_2` | `title` | 答案：B | 1120, 160, 700, 130 | 0.00–4.00s | `pop` | 66px #141414 / bg #C8C8C8 α0.00 |  |
+| 2 | `subheading_2` | `subheading` | v2 統一用 with_* 方法回傳新的 clip | 1120, 300, 700, 140 | 0.00–4.00s | `none` | 32px #323232 / bg #C8C8C8 α0.00 |  |
+| 3 | `cta_button_1` | `cta_button` | 立即訂閱 ▶ | 1120, 500, 440, 110 | 1.00–4.00s | `pop` | 34px #FFFFFF / bg #DC3C3C α1.00 |  |
+| 4 | `qr_code_1` | `qr_code` | QR | 1600, 470, 220, 220 | 0.00–4.00s | `none` | 22px #141414 / bg #FFFFFF α1.00 |  |
+| 5 | `shape_1` | `shape` |  | 96, 720, 960, 12 | 0.00–4.00s | `none` | 25px #3C3C3C / bg #FAB428 α1.00 |  |
+| 6 | `subtitle_2` | `subtitle` | 我們下一集見！ | 260, 900, 1400, 90 | 0.00–4.00s | `none` | 36px #FFFFFF / bg #000000 α0.45 / 描邊 3px #000000 |  |
 
-## 8. 最小範例 / Minimal MoviePy v2 example
+## 9. 最小範例
 
 ```python
 import json
@@ -318,9 +337,9 @@ for sc in L['scenes']:
 concatenate_videoclips(scenes).write_videofile('out.mp4', fps=L['fps'], codec='libx264', audio=False)
 ```
 
-完整、涵蓋所有元件類型的實作請參考同目錄的 `render_moviepy.py`。
+完整、涵蓋所有元件類型與轉場的實作請參考同目錄的 `render_moviepy.py`。
 
-## 9. 檢查清單 / Checklist
+## 10. 檢查清單
 
 - [ ] 輸出解析度 = 1920×1080、fps = 30、總長 ≈ 14.00s
 - [ ] 每個場景的中間影格與對應 `scene_*.png` 的版面一致（位置、大小、層級）
@@ -328,6 +347,7 @@ concatenate_videoclips(scenes).write_videofile('out.mp4', fps=L['fps'], codec='l
 - [ ] 文字都在 title-safe 範圍內、沒有被裁切
 - [ ] `visible: false` 的元件沒有出現
 - [ ] 有 `src` 的佔位已換成真實素材
+- [ ] 轉場類型與長度符合各 scene 的 `transition`
 
 ## 附錄 / Appendix
 
@@ -350,6 +370,8 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `safe_area` | object | `action_margin` (0.05), `title_margin` (0.10) and the resulting rects `action_safe_rect` / `title_safe_rect` as `[x, y, w, h]` |
 | `fonts` | object | `{ "cjk": "fonts/NotoSansCJKtc-Subset.otf" }` path relative to layout.json (or `null`) |
 | `coordinate_system` | string | human-readable reminder of the conventions above |
+| `language` | string | language of the generated texts / docs: `"zh-TW"` or `"en"` |
+| `transition_policy` | string | how scene transitions are timed (see *Scene transitions* below) |
 | `scenes` | array | ordered list of scenes / shots (played back-to-back) |
 
 ### Scene
@@ -363,6 +385,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `duration` | float | seconds |
 | `background` | colour | base colour of the frame (a full-frame `ColorClip`) |
 | `notes` | string | director / agent notes |
+| `transition` | object | transition **into** this scene: `{ "type": "crossfade", "duration": 0.6, "moviepy": "…" }`; `type: "none"` (duration 0) = hard cut |
 | `draft_png` | string | file name of the white-model draft image (exists only if the `png` format was exported) |
 | `elements` | array | elements sorted by `z` (bottom → top) |
 
@@ -376,7 +399,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `x`, `y`, `w`, `h` | float | box in pixels (top-left + size) |
 | `center` | `[float, float]` | derived box centre |
 | `text` | string | main text (`\n` = line break). For `lower_third` line 1 = name, line 2 = title. For `countdown` the start number. For `sticker` the emoji / icon name |
-| `font_size` | float | pixels |
+| `font_size` | float | **em size** in pixels — same meaning as CSS `font-size`, Pillow `ImageFont.truetype(font, size)` and MoviePy `TextClip(font_size=…)` |
 | `font_color` | colour | text colour (also the fill colour of `progress_bar`, the ring of `countdown`, dark modules of `qr_code`) |
 | `bg_color` / `bg_opacity` | colour / 0‥1 | box fill; opacity 0 = no box |
 | `align` | `left` \| `center` \| `right` | horizontal text alignment (text is vertically centred) |
@@ -384,7 +407,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `start` / `end` | float | visible interval **relative to the scene start** (`end` already resolved) |
 | `until_scene_end` | bool | `true` if `end` follows the scene duration |
 | `abs_start` / `abs_end` | float | same interval in absolute video time |
-| `animation` | string | `none`, `fade_in`, `fade_out`, `fade_in_out`, `slide_up`, `slide_left`, `pop`, `typewriter` |
+| `animation` | string | `none`, `fade_in`, `fade_out`, `fade_in_out`, `slide_up`, `slide_left`, `pop`, `typewriter`, `scroll_up` (credits roll: moves from below the frame to above it over the element's time; the box sets x / width) |
 | `z` | int | stacking order, 0 = bottom |
 | `options` | string[] | rows of an `options` element |
 | `answer` | int? | index of the correct / highlighted option |
@@ -395,27 +418,47 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `visible` / `locked` | bool | editor flags (`visible: false` elements should be skipped) |
 | `moviepy` | string | short hint of the MoviePy construction for this type |
 
-### Element types
+### Scene transitions
 
-| type | 中文 | meaning |
+`scene.transition.type` is one of:
+
+| type | effect |
+|---|---|
+| `none` | hard cut |
+| `crossfade` | the new scene fades in over the last frame of the previous scene |
+| `fade_black` | the new scene fades in from black (also allowed on the first scene) |
+| `slide_left` | the new scene slides in from the right, over the previous scene's last frame |
+| `slide_up` | the new scene slides in from the bottom |
+| `wipe` | a left → right wipe reveals the new scene |
+| `zoom` | the new scene grows from 70 % to 100 % while fading in |
+
+Timing policy: the transition plays during the **first `duration` seconds of the
+scene it belongs to**, on top of a freeze frame of the previous scene's last
+frame. Scene `start` / `end` times and the total length therefore do not change.
+On the first scene only `fade_black` has an effect. `render_moviepy.py`
+implements all types.
+
+### 元件類型 / Element types
+
+| type | 中文 | English |
 |---|---|---|
-| `background` | 背景 | full-frame colour / image layer |
-| `title` | 標題 | main headline |
-| `subheading` | 副標題 | secondary headline |
-| `subtitle` | 字幕 | spoken-line caption, usually bottom centre with outline |
-| `text_card` | 字卡 | card with key points |
-| `options` | 選項 | multiple-choice list (A/B/C/D) |
-| `lower_third` | 下三分之一名牌 | name / title strap |
-| `media_placeholder` | 圖片/影片佔位 | B-roll, screenshot or image slot |
-| `logo` | Logo | brand logo slot |
-| `avatar_frame` | 頭像/人物框 | presenter / face-cam frame |
-| `progress_bar` | 進度條 | fills 0 → 100 % over the element's time |
-| `countdown` | 倒數計時 | counts down from `text` to 0 over the element's time |
-| `watermark` | 浮水印 | semi-transparent channel mark |
-| `cta_button` | CTA 按鈕 | call-to-action button |
-| `callout_arrow` | 箭頭/標註 | arrow + label pointing at something |
-| `shape` | 形狀 | decorative rect / rounded rect / circle |
-| `qr_code` | QR Code | QR code slot |
-| `sticker` | 貼圖/圖示 | emoji / icon sticker |
+| `title` | 標題 | Title |
+| `subheading` | 副標題 | Subheading |
+| `subtitle` | 字幕 | Subtitle |
+| `text_card` | 字卡 | Text card |
+| `options` | 選項 | Options |
+| `lower_third` | 下三分之一名牌 | Lower third |
+| `cta_button` | CTA 按鈕 | CTA button |
+| `watermark` | 浮水印 | Watermark |
+| `media_placeholder` | 圖片/影片佔位 | Media placeholder |
+| `logo` | Logo | Logo |
+| `avatar_frame` | 頭像/人物框 | Avatar / presenter |
+| `qr_code` | QR Code | QR code |
+| `sticker` | 貼圖/圖示 | Emoji / icon sticker |
+| `progress_bar` | 進度條 | Progress bar |
+| `countdown` | 倒數計時 | Countdown |
+| `callout_arrow` | 箭頭/標註 | Callout arrow |
+| `shape` | 形狀 | Shape |
+| `background` | 背景 | Background |
 
-Unknown future types should be rendered as a labelled box (`shape` behaviour).
+未知的未來類型請畫成有標籤的方框（同 `shape`）。

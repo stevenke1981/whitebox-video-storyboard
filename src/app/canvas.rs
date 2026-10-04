@@ -404,8 +404,9 @@ impl App {
         painter.text(
             avail.left_top() + vec2(10.0, 8.0),
             egui::Align2::LEFT_TOP,
-            format!(
+            wvs::tf!(
                 "場景 {} / {} · {} · {:.1}s · {}×{} · {:.0}%",
+                "Scene {} / {} · {} · {:.1}s · {}×{} · {:.0}%",
                 self.scene + 1,
                 self.project.scenes.len(),
                 sc.name,

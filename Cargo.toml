@@ -1,6 +1,6 @@
 [package]
 name = "whitebox-video-storyboard"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.88"
 description = "White-model (白模) video layout draft editor: drag subtitle/title/option components onto a canvas, export draft PNGs, layout.json, an agent guide and a MoviePy render script (egui/eframe)"

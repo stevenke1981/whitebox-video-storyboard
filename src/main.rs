@@ -54,7 +54,10 @@ fn main() -> eframe::Result {
     if let Some(code) = wvs::cli::run(&args) {
         std::process::exit(code);
     }
-    let open = args.first().cloned();
+    // `--lang` / WVS_LANG also selects the GUI language (overrides the saved setting).
+    let mut gui_args = args.clone();
+    let lang = wvs::cli::take_lang(&mut gui_args).ok().flatten();
+    let open = gui_args.into_iter().find(|a| !a.starts_with("--"));
     let viewport = egui::ViewportBuilder::default()
         .with_title("白模影片版面草稿 Whitebox Video Storyboard")
         .with_inner_size([1480.0, 900.0])
@@ -62,5 +65,9 @@ fn main() -> eframe::Result {
         .with_app_id("whitebox-video-storyboard")
         .with_icon(icon());
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    eframe::run_native("whitebox-video-storyboard", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, open)))))
+    eframe::run_native(
+        "whitebox-video-storyboard",
+        options,
+        Box::new(move |cc| Ok(Box::new(app::App::new(cc, open, lang)))),
+    )
 }

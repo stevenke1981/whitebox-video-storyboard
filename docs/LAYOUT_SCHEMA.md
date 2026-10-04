@@ -17,6 +17,8 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `safe_area` | object | `action_margin` (0.05), `title_margin` (0.10) and the resulting rects `action_safe_rect` / `title_safe_rect` as `[x, y, w, h]` |
 | `fonts` | object | `{ "cjk": "fonts/NotoSansCJKtc-Subset.otf" }` path relative to layout.json (or `null`) |
 | `coordinate_system` | string | human-readable reminder of the conventions above |
+| `language` | string | language of the generated texts / docs: `"zh-TW"` or `"en"` |
+| `transition_policy` | string | how scene transitions are timed (see *Scene transitions* below) |
 | `scenes` | array | ordered list of scenes / shots (played back-to-back) |
 
 ### Scene
@@ -30,6 +32,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `duration` | float | seconds |
 | `background` | colour | base colour of the frame (a full-frame `ColorClip`) |
 | `notes` | string | director / agent notes |
+| `transition` | object | transition **into** this scene: `{ "type": "crossfade", "duration": 0.6, "moviepy": "…" }`; `type: "none"` (duration 0) = hard cut |
 | `draft_png` | string | file name of the white-model draft image (exists only if the `png` format was exported) |
 | `elements` | array | elements sorted by `z` (bottom → top) |
 
@@ -43,7 +46,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `x`, `y`, `w`, `h` | float | box in pixels (top-left + size) |
 | `center` | `[float, float]` | derived box centre |
 | `text` | string | main text (`\n` = line break). For `lower_third` line 1 = name, line 2 = title. For `countdown` the start number. For `sticker` the emoji / icon name |
-| `font_size` | float | pixels |
+| `font_size` | float | **em size** in pixels — same meaning as CSS `font-size`, Pillow `ImageFont.truetype(font, size)` and MoviePy `TextClip(font_size=…)` |
 | `font_color` | colour | text colour (also the fill colour of `progress_bar`, the ring of `countdown`, dark modules of `qr_code`) |
 | `bg_color` / `bg_opacity` | colour / 0‥1 | box fill; opacity 0 = no box |
 | `align` | `left` \| `center` \| `right` | horizontal text alignment (text is vertically centred) |
@@ -51,7 +54,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `start` / `end` | float | visible interval **relative to the scene start** (`end` already resolved) |
 | `until_scene_end` | bool | `true` if `end` follows the scene duration |
 | `abs_start` / `abs_end` | float | same interval in absolute video time |
-| `animation` | string | `none`, `fade_in`, `fade_out`, `fade_in_out`, `slide_up`, `slide_left`, `pop`, `typewriter` |
+| `animation` | string | `none`, `fade_in`, `fade_out`, `fade_in_out`, `slide_up`, `slide_left`, `pop`, `typewriter`, `scroll_up` (credits roll: moves from below the frame to above it over the element's time; the box sets x / width) |
 | `z` | int | stacking order, 0 = bottom |
 | `options` | string[] | rows of an `options` element |
 | `answer` | int? | index of the correct / highlighted option |
@@ -62,6 +65,27 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `visible` / `locked` | bool | editor flags (`visible: false` elements should be skipped) |
 | `moviepy` | string | short hint of the MoviePy construction for this type |
 
+### Scene transitions
+
+`scene.transition.type` is one of:
+
+| type | effect |
+|---|---|
+| `none` | hard cut |
+| `crossfade` | the new scene fades in over the last frame of the previous scene |
+| `fade_black` | the new scene fades in from black (also allowed on the first scene) |
+| `slide_left` | the new scene slides in from the right, over the previous scene's last frame |
+| `slide_up` | the new scene slides in from the bottom |
+| `wipe` | a left → right wipe reveals the new scene |
+| `zoom` | the new scene grows from 70 % to 100 % while fading in |
+
+Timing policy: the transition plays during the **first `duration` seconds of the
+scene it belongs to**, on top of a freeze frame of the previous scene's last
+frame. Scene `start` / `end` times and the total length therefore do not change.
+On the first scene only `fade_black` has an effect. `render_moviepy.py`
+implements all types.
+
+<!-- element-types -->
 ### Element types
 
 | type | 中文 | meaning |

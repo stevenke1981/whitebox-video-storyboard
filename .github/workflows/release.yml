@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,7 +33,7 @@ jobs:
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -41,7 +41,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libxkbcommon-dev libgl1-mesa-dev libwayland-dev
+            libxcb-xfixes0-dev libxkbcommon-dev libgl1-mesa-dev libwayland-dev p7zip-full
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -54,39 +54,97 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Package
+      - name: Package (AES-256 encrypted zip)
         shell: bash
+        env:
+          RELEASE_ZIP_PASSWORD: ${{ secrets.RELEASE_ZIP_PASSWORD }}
         run: |
+          if [ -z "$RELEASE_ZIP_PASSWORD" ]; then
+            echo "::error::repository secret RELEASE_ZIP_PASSWORD is not set"
+            exit 1
+          fi
           VERSION=${GITHUB_REF_NAME#v}
           [ "$GITHUB_REF_TYPE" = "tag" ] || VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
           PKG="$BIN-$VERSION-${{ matrix.name }}"
           mkdir -p "dist/$PKG"
           EXT=""; [ "${{ runner.os }}" = "Windows" ] && EXT=".exe"
           cp "target/${{ matrix.target }}/release/$BIN$EXT" "dist/$PKG/"
-          cp README.md LICENSE "dist/$PKG/"
+          cp README.md README.en.md CHANGELOG.md LICENSE "dist/$PKG/"
           cp -r examples "dist/$PKG/examples"
+          rm -rf "dist/$PKG/examples/__pycache__"
           mkdir -p "dist/$PKG/fonts" && cp assets/fonts/NotoSansCJKtc-Subset.otf assets/fonts/LICENSE-OFL.txt "dist/$PKG/fonts/"
+          # 7-Zip: preinstalled on Windows, p7zip on Linux, Homebrew sevenzip (7zz) on macOS
+          if command -v 7z >/dev/null; then SZ=7z
+          elif command -v 7zz >/dev/null; then SZ=7zz
+          else brew install sevenzip >/dev/null && SZ=7zz; fi
           cd dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "$PKG.zip" "$PKG" > /dev/null
-          else
-            tar czf "$PKG.tar.gz" "$PKG"
+          "$SZ" a -tzip -mem=AES256 -mx=9 -bso0 -bsp0 -p"$RELEASE_ZIP_PASSWORD" "$PKG.zip" "$PKG"
+          # sanity check: listing works, extraction without the password must fail
+          "$SZ" l -slt "$PKG.zip" > ../zip-list.txt
+          grep -m1 -i 'AES-256' ../zip-list.txt
+          if "$SZ" t -p"wrong-password" "$PKG.zip" >/dev/null 2>&1; then
+            echo "::error::archive is not password protected"; exit 1
           fi
+          "$SZ" t -p"$RELEASE_ZIP_PASSWORD" "$PKG.zip" -bso0
           ls -la
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
-          path: |
-            dist/*.zip
-            dist/*.tar.gz
+          path: dist/*.zip
           if-no-files-found: error
 
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
         with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums and release notes
+        shell: bash
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+          VERSION=${GITHUB_REF_NAME#v}
+          {
+            echo "## Whitebox Video Storyboard $GITHUB_REF_NAME"
+            echo
+            echo "🔒 **下載檔為加密壓縮檔（AES-256 ZIP）**：請使用 7-Zip / Keka / \`7z x\` 解壓，密碼請向作者索取。"
+            echo
+            echo "🔒 **The downloads are password-protected AES-256 ZIP archives.** Extract them with 7-Zip, Keka or \`7z x <file>.zip\` (the built-in Windows / macOS unzip may not support AES). Please ask the author for the password."
+            echo
+            echo "| Platform | File |"
+            echo "|---|---|"
+            for f in dist/*.zip; do n=$(basename "$f"); echo "| ${n#whitebox-video-storyboard-$VERSION-} | \`$n\` |"; done
+            echo
+            echo "SHA-256 checksums: \`SHA256SUMS.txt\`."
+            echo
+            # the matching CHANGELOG section
+            awk -v v="$VERSION" '
+              /^## / { if (p) exit; if (index($0, "## " v " ") == 1) { p = 1; print "### Changes"; next } }
+              p { print }
+            ' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+
+      - name: Create release (once, with all assets)
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          body_path: notes.md
+          generate_release_notes: true
           files: |
             dist/*.zip
-            dist/*.tar.gz
-          generate_release_notes: true
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

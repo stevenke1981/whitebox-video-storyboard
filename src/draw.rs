@@ -57,6 +57,8 @@ pub enum VAlign {
 pub enum Corner {
     TopLeft,
     BottomRight,
+    /// Centred on the top edge (scene-level notes such as the transition).
+    TopCenter,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -147,6 +149,21 @@ pub fn scene_prims(project: &Project, scene: &Scene, opts: &DrawOptions) -> Vec<
         }
         element_prims(e, scene.duration, u, opts, &mut out);
     }
+    if opts.annotations && !scene.transition.is_none() {
+        out.push(Prim::Badge {
+            r: R::new(0.0, 0.0, cw, ch),
+            text: tf!(
+                "轉場進入：{} {:.1}s",
+                "Transition in: {} {:.1}s",
+                scene.transition.kind.key(),
+                scene.transition.duration
+            ),
+            size: (14.0 * u).max(7.0),
+            fg: [255, 255, 255, 255],
+            bg: [50, 105, 200, 230],
+            corner: Corner::TopCenter,
+        });
+    }
     out
 }
 
@@ -188,7 +205,7 @@ pub fn element_prims(e: &Element, scene_duration: f32, u: f32, opts: &DrawOption
     match e.kind {
         Background => {
             out.push(Prim::Fill { r, color: fill, radius: 0.0, ellipse: false });
-            if e.text != "背景" {
+            if e.text != "背景" && e.text != "Background" {
                 text(out, r.inset(pad), &e.text, e.font_size, e.align);
             }
         }
@@ -234,7 +251,7 @@ pub fn element_prims(e: &Element, scene_duration: f32, u: f32, opts: &DrawOption
                     stroke: 0.0,
                     stroke_color: [0, 0, 0, 0],
                 });
-                let label = e.options.get(i).map(String::as_str).unwrap_or("選項");
+                let label = e.options.get(i).map(String::as_str).unwrap_or(crate::i18n::t("選項", "Option"));
                 let tr = R::new(rr.x + row_h + pad * 0.5, rr.y, rr.w - row_h - pad * 1.5, rr.h);
                 text(out, tr, label, size, e.align);
             }
@@ -424,11 +441,10 @@ pub fn element_prims(e: &Element, scene_duration: f32, u: f32, opts: &DrawOption
         }
     }
     if opts.annotations {
-        let size = (17.0 * u).max(9.0);
-        let info = e.kind.info();
+        let size = (12.0 * u).max(6.5);
         out.push(Prim::Badge {
             r,
-            text: format!("{} · {}", info.zh, e.id),
+            text: format!("{} · {}", e.kind.label(), e.id),
             size,
             fg: [255, 255, 255, 255],
             bg: [40, 40, 48, 215],
@@ -464,6 +480,7 @@ pub fn badge_rect(r: &R, w: f32, h: f32, corner: Corner) -> R {
         (Corner::BottomRight, false) => R::new(r.right() - w, r.bottom() - h, w, h),
         (Corner::BottomRight, true) if r.y >= h => R::new(r.right() - w, r.y - h, w, h),
         (Corner::BottomRight, true) => R::new(r.right() - w, r.bottom(), w, h),
+        (Corner::TopCenter, _) => R::new(r.cx() - w / 2.0, r.y, w, h),
     }
 }
 

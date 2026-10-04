@@ -36,9 +36,17 @@ impl Fonts {
         (0, self.chain[0].glyph_id(c))
     }
 
+    /// `size` is the em size in pixels (like CSS, Pillow/MoviePy and egui), while
+    /// ab_glyph's `PxScale` is the ascent-to-descent height: convert.
+    fn scale(&self, i: usize, size: f32) -> PxScale {
+        let f = &self.chain[i];
+        let upem = f.units_per_em().unwrap_or(1000.0).max(1.0);
+        PxScale::from(size * f.height_unscaled() / upem)
+    }
+
     fn advance(&self, c: char, size: f32) -> f32 {
         let (i, g) = self.pick(c);
-        self.chain[i].as_scaled(PxScale::from(size)).h_advance(g)
+        self.chain[i].as_scaled(self.scale(i, size)).h_advance(g)
     }
 
     pub fn measure(&self, s: &str, size: f32) -> f32 {
@@ -46,12 +54,12 @@ impl Fonts {
     }
 
     fn line_height(&self, size: f32) -> f32 {
-        let f = self.chain[0].as_scaled(PxScale::from(size));
+        let f = self.chain[0].as_scaled(self.scale(0, size));
         (f.ascent() - f.descent() + f.line_gap()).max(size)
     }
 
     fn ascent(&self, size: f32) -> f32 {
-        self.chain[0].as_scaled(PxScale::from(size)).ascent()
+        self.chain[0].as_scaled(self.scale(0, size)).ascent()
     }
 
     /// Greedy line wrapping: break at spaces for Latin words, anywhere between CJK characters.
@@ -176,7 +184,7 @@ fn draw_line(pm: &mut Pixmap, fonts: &Fonts, s: &str, size: f32, x: f32, baselin
     for ch in s.chars() {
         let (i, gid) = fonts.pick(ch);
         let font = &fonts.chain[i];
-        let scale = PxScale::from(size);
+        let scale = fonts.scale(i, size);
         let g = gid.with_scale_and_position(scale, point(pen, baseline));
         if let Some(og) = font.outline_glyph(g) {
             let b = og.px_bounds();
@@ -317,5 +325,5 @@ pub fn save_png(pm: &Pixmap, path: &std::path::Path) -> Result<(), String> {
         buf.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
     }
     let img = image::RgbaImage::from_raw(pm.width(), pm.height(), buf).ok_or("image buffer")?;
-    img.save(path).map_err(|e| format!("寫入 {} 失敗: {e}", path.display()))
+    img.save(path).map_err(|e| tf!("寫入 {} 失敗: {e}", "failed to write {}: {e}", path.display()))
 }

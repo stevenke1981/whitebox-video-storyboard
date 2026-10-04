@@ -4,6 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/stevenke1981/whitebox-video-storyboard)](https://github.com/stevenke1981/whitebox-video-storyboard/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**繁體中文** · [English](README.en.md)
+
 用 **Rust + egui/eframe** 寫的桌面工具：把 **字幕、標題、副標題、字卡、選項（A/B/C/D）**……等元件
 拖曳到畫布上，排出像「白模」一樣的影片畫面草稿，然後一鍵匯出：
 
@@ -13,9 +15,12 @@
    （`TextClip`、`ColorClip`、`ImageClip`、`CompositeVideoClip`、`with_position` / `with_start` / `with_duration`…）
 4. **`render_moviepy.py`**——讀取 layout.json 直接合成佔位影片（`moviepy>=2`），Agent 可以在它上面替換素材
 5. **`storyboard.html`**——單一檔案的分鏡網頁（內嵌草稿圖、元件表、時間軸、備註、MoviePy 提示），用瀏覽器直接打開
-6. **`storyboard.md`**——純文字（繁體中文）版面說明：每個元件的位置、大小、文字、時間、動畫，**Agent 不看圖也能理解版面**
+6. **`storyboard.md`**——純文字（繁體中文或英文）版面說明：每個元件的位置、大小、文字、時間、動畫，**Agent 不看圖也能理解版面**
 
 匯出格式可以自由勾選，每次匯出會自動建立 **`<專案檔名>_<日期_時間>`** 資料夾，不會覆蓋上一次的結果。
+
+0.3.0 新增：**14 種場景範本**（片頭、片尾、轉場卡、章節、問答、對比、清單、訪談、倒數、引言、商品、名單…）、
+**場景轉場**（交叉淡化、黑場、推入、擦除、放大，MoviePy 腳本實作）、**繁中 / English 介面切換**與英文匯出文件。
 
 ![GUI](docs/images/gui.png)
 
@@ -39,6 +44,64 @@
 |---|---|
 | ![](docs/images/moviepy_frame_scene1.png) | ![](docs/images/moviepy_frame_scene2.png) |
 
+## 場景範本（0.3.0）
+
+**範本 ▸ 範本庫…**（Ctrl+T，或場景列的「🎬 範本…」）開啟範本庫：點縮圖或「＋ 插入」就把範本場景插在目前場景之後。
+範本會依目前畫布比例自動排版（16:9 / 4:3 / 1:1 用橫式版面，9:16 / 4:5 用直式堆疊版面），並帶有預設的動畫、轉場與給 Agent 的備註。
+
+![範本庫](docs/images/templates_panel.png)
+
+| key | 範本 | 內容 |
+|---|---|---|
+| `intro` | 片頭 | Logo 彈出、節目名稱淡入、本集主題（黑場淡入） |
+| `outro` | 片尾（訂閱 / CTA） | 感謝收看、訂閱 / 按讚按鈕、推薦影片、製作名單 |
+| `transition_wipe` / `transition_fade` / `transition_zoom` | 轉場卡 | 1 秒的擦除 / 黑場淡入 / 放大轉場提示卡 |
+| `chapter` | 章節標題 | 大章節編號、章節名稱與說明 |
+| `quiz` | 問答 / 測驗 | 題目字卡、A/B/C/D 選項、倒數、進度條 |
+| `comparison` | 對比（A vs B） | 兩個素材並排（直式為上下）、VS 標記、優缺點 |
+| `key_points` | 清單 / 重點 | 標題＋ 3 個依序滑入的重點 |
+| `talking_head` | 訪談 / 主持人 | 人物鏡頭、下三分之一名牌、字幕 |
+| `countdown` | 倒數 | 大型倒數計時與進度條 |
+| `quote` | 引言 | 置中引言與作者出處 |
+| `product` | 商品展示 | 商品圖、賣點清單、價格與購買按鈕 |
+| `credits` | 結尾名單 | 向上捲動（`scroll_up`）的工作人員名單 |
+
+**我的範本**：範本庫下方的「💾 將目前場景存為範本」會把目前場景（含所有元件、轉場與備註）存成
+`<設定資料夾>/whitebox-video-storyboard/templates/<名稱>.json`，之後可在任何專案插入（不同比例時自動等比縮放）或刪除。
+
+全部 14 種範本（16:9，`examples/templates_16x9.json`）：
+
+![templates 16:9](docs/images/templates_overview_16x9.png)
+
+## 場景轉場（0.3.0）
+
+右側「場景設定」可選擇 **轉場進入** 與長度：
+
+| `type` | 效果 |
+|---|---|
+| `none` | 直接切換 |
+| `crossfade` | 新場景從透明淡入，蓋在上一場景最後一格上 |
+| `fade_black` | 從黑場淡入（第一個場景也可用） |
+| `slide_left` / `slide_up` | 新場景由右 / 由下推入 |
+| `wipe` | 左→右擦除顯示新場景 |
+| `zoom` | 新場景由 70% 放大到 100% 並淡入 |
+
+轉場在**該場景開頭的 `duration` 秒內**播放、疊在上一場景最後一格的定格畫面上，所以各場景的開始時間與總長都不變。
+轉場會寫進 `layout.json`（`scene.transition = {type, duration, moviepy}`、頂層 `transition_policy`）、`AGENT_GUIDE.md`（第 6 節）、
+`storyboard.html`、`storyboard.md`，草稿圖頂端也會顯示藍色「轉場進入」標籤；`render_moviepy.py` 實作了全部類型。
+
+MoviePy 實際合成的轉場中間格（`render_moviepy.py --frames-dir f --transition-frames`）：
+
+![transitions](docs/images/moviepy_transitions.png)
+
+## 語言 / Language
+
+**🌐 語言 Language** 選單可切換 **繁體中文 / English**，選擇會記在 `settings.json`。切換後介面、新元件與範本的預設文字、
+以及匯出的 `AGENT_GUIDE.md`、`storyboard.md`、`storyboard.html`、草稿圖標籤都會使用該語言（已輸入的文字不會被翻譯）。
+命令列用 `--lang en|zh-TW`（或環境變數 `WVS_LANG`），GUI 也接受 `--lang` 暫時覆寫。
+
+![English UI](docs/images/gui_en.png)
+
 ## 功能
 
 - **三欄式介面**：左側元件庫、中間畫布、右側屬性面板＋圖層；下方場景（鏡頭）列表含縮圖與秒數
@@ -46,7 +109,9 @@
 - **拖曳**：從元件庫拖到畫布新增（或點一下加在中央）、拖曳移動、8 個控制點調整大小（Shift 等比例）
 - **吸附**：格線（可調間距）、畫面中線、**Title-safe（10%）/ Action-safe（5%）** 安全框、其他元件的邊與中心；Alt 暫停吸附，吸附時顯示參考線
 - **圖層**：上移／下移／置頂／置底、顯示／隱藏、鎖定；複製、刪除；**復原／重做**（Ctrl+Z / Ctrl+Y）
-- **多場景**：新增／複製／刪除／排序場景，每個場景有長度（秒）、背景色、給 Agent 的備註
+- **多場景**：新增／複製／刪除／排序場景，每個場景有長度（秒）、背景色、**轉場**、給 Agent 的備註
+- **場景範本庫**：14 種內建範本＋自訂範本，依畫布比例自動排版
+- **雙語**：繁體中文 / English 介面與匯出文件
 - **18 種元件**（可擴充）：
 
   | 類型 | 中文 | | 類型 | 中文 |
@@ -62,15 +127,21 @@
   | `media_placeholder` | 圖片 / 影片佔位 | | `background` | 背景色 |
 
 - **每個元件的屬性**：id / 名稱、x, y, w, h（目標解析度像素）、文字、字級、文字顏色、底色＋不透明度、對齊、描邊、
-  場景內開始 / 結束時間、動畫提示（`none`、`fade_in`、`fade_out`、`fade_in_out`、`slide_up`、`slide_left`、`pop`、`typewriter`）、
+  場景內開始 / 結束時間、動畫提示（`none`、`fade_in`、`fade_out`、`fade_in_out`、`slide_up`、`slide_left`、`pop`、`typewriter`、`scroll_up`）、
   z 順序、素材路徑 `src`、給 Agent 的備註，以及各類型專屬屬性（選項列表、正確答案、形狀、箭頭方向）
 - **中文顯示**：內附 **Noto Sans CJK TC 子集**（Big5 + GB2312 全部字元，約 16,800 字，SIL OFL 1.1），GUI 與 PNG 匯出都不會出現豆腐字；子集外的字會再嘗試系統字型（微軟正黑體、PingFang、Noto CJK…）
+- **字級＝em 大小**（0.3.0 起）：`font_size` 與 CSS `font-size`、Pillow / MoviePy 的 `font_size` 意義相同，GUI、草稿 PNG 與 MoviePy 成品的文字大小一致；
+  0.2 以前的專案檔開啟時會自動換算（× 0.69）
 - **專案存檔**：JSON（`layout.json` 也可以直接開回來編輯）
 - **無頭模式（CLI）**：不需要顯示器即可匯出，方便 CI 或 Agent 自動化
 
 ## 下載與建置
 
-到 [Releases](https://github.com/stevenke1981/whitebox-video-storyboard/releases) 下載 Windows / macOS / Linux 執行檔，或自行建置：
+到 [Releases](https://github.com/stevenke1981/whitebox-video-storyboard/releases) 下載 Windows / macOS（arm64 / x86_64）/ Linux 執行檔，或自行建置。
+
+> 🔒 **0.3.0 起，Release 下載檔是有密碼保護的 AES-256 加密 ZIP**。請用 [7-Zip](https://www.7-zip.org/)、Keka（macOS）或 `7z x <檔名>.zip` 解壓
+> （Windows 檔案總管 / macOS「封存工具程式」內建的解壓可能不支援 AES）。**密碼請向作者索取。** 每個 Release 也附上 `SHA256SUMS.txt`。
+
 
 ```bash
 # Linux 需要的套件（Debian/Ubuntu）
@@ -104,6 +175,7 @@ cargo build --release
 | Ctrl+Z / Ctrl+Y | 復原 / 重做 |
 | Ctrl+S / Ctrl+Shift+S / Ctrl+O | 儲存 / 另存 / 開啟 |
 | Ctrl+E | 匯出 |
+| Ctrl+T | 場景範本庫 |
 | Ctrl+滾輪 | 縮放畫布 |
 
 ### 匯出資料夾
@@ -133,7 +205,7 @@ cargo build --release
 | Agent 指南 | `guide` | `AGENT_GUIDE.md` | 給 AI Agent 的 MoviePy 配置說明（逐場景元件表；只列出有勾選的檔案） |
 | MoviePy 腳本 | `script` | `render_moviepy.py` | 讀 layout.json 合成佔位影片（moviepy>=2） |
 | HTML 分鏡頁 | `html` | `storyboard.html` | **單一檔案**：草稿圖以 base64 內嵌，滑鼠移到元件會標示對應框與表格列；含時間軸、每場景甘特圖、元件表（位置、大小、時間、動畫、樣式）、導演/Agent 備註與 MoviePy 程式片段 |
-| Markdown 文字說明 | `md` | `storyboard.md` | **純文字**繁中說明：座標系與安全框、時間軸；每個場景有 ASCII 版面速寫，逐一描述元件的位置（九宮格區域＋像素＋百分比）、大小、文字內容、樣式、時間（場景內／絕對）、動畫、重疊關係與 MoviePy 提示，最後列出事件順序 |
+| Markdown 文字說明 | `md` | `storyboard.md` | **純文字**說明（繁中或英文，依語言）：座標系與安全框、時間軸；每個場景有 ASCII 版面速寫，逐一描述元件的位置（九宮格區域＋像素＋百分比）、大小、文字內容、樣式、時間（場景內／絕對）、動畫、重疊關係與 MoviePy 提示，最後列出事件順序 |
 | 中文字型 | `font` | `fonts/NotoSansCJKtc-Subset.otf` | 給 TextClip 用的中文字型（＋ OFL 授權） |
 
 ```
@@ -163,6 +235,16 @@ whitebox-video-storyboard --export project.json out_dir --no-subdir
 
 whitebox-video-storyboard --render project.json 2 scene2.png     # 只輸出第 2 個場景
 whitebox-video-storyboard --sample my.json --preset 9:16          # 產生範例專案
+
+# 場景範本
+whitebox-video-storyboard --templates                                         # 列出範本
+whitebox-video-storyboard --from-templates intro,quiz,outro new.json --preset 9:16 --name 我的短片
+whitebox-video-storyboard --from-templates all demo.json                      # 全部 14 種
+whitebox-video-storyboard --add-template project.json chapter,quiz --at 2 -o out.json   # 插在第 2 個場景之後
+
+# 英文輸出（範本預設文字、AGENT_GUIDE / Markdown / HTML、訊息）
+whitebox-video-storyboard --from-templates all demo_en.json --lang en
+whitebox-video-storyboard --export demo_en.json out --lang en
 whitebox-video-storyboard --help
 ```
 
@@ -174,6 +256,7 @@ whitebox-video-storyboard --help
 | `--name <name>` | 子資料夾名稱前綴（預設為專案檔名） |
 | `--no-font` / `--no-overview` | 從格式中移除字型 / 總覽圖（相容 0.1 版） |
 | `--no-annotations` / `--safe-guides` | PNG 不畫類型/時間標籤 / 畫出安全框 |
+| `--lang en\|zh-TW` | 語言（任何指令皆可用；預設讀 `WVS_LANG`，否則繁體中文） |
 
 腳本中取得輸出資料夾：`DIR=$(whitebox-video-storyboard --export p.json out | head -n1)`
 
@@ -186,10 +269,13 @@ cd ~/exports/quiz_20261004_235314          # 匯出資料夾
 python render_moviepy.py layout.json -o draft.mp4 --preview      # 1/3 解析度、12fps 快速預覽
 python render_moviepy.py layout.json -o final.mp4                 # 原尺寸
 python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸出每個場景的影格
+python render_moviepy.py layout.json --frames-dir f --transition-frames --no-video   # 另外輸出每個轉場的中間格
+python render_moviepy.py layout.json -o cut.mp4 --no-transitions          # 忽略轉場（硬切）
 ```
 
 - 元件位置：`clip.with_position((x, y))`（左上角）、時間：`with_start(start)` / `with_duration(end - start)`（相對於場景）、
-  場景以 `CompositeVideoClip` 疊合後 `concatenate_videoclips` 串接
+  場景以 `CompositeVideoClip` 疊合後 `concatenate_videoclips` 串接；轉場以上一場景最後一格的 `ImageClip` 墊底，
+  再疊上加了 `CrossFadeIn` / 位置函式 / 遮罩 / `resized` 的新場景（總長不變）
 - 有 `src` 的佔位（圖片／影片／Logo／頭像／QR／貼圖）會自動換成真實素材（cover-fit 裁切，頭像可圓形遮罩）
 - **中文字型**：`TextClip(font=...)` 一定要給含中文的字型檔。腳本依序找 `--font`、環境變數 `WVS_FONT`、
   layout.json 的 `fonts.cjk`、腳本旁的 `fonts/`、repo 的 `assets/fonts/`，最後是系統字型（Noto CJK、微軟正黑體、PingFang…）。
@@ -216,6 +302,7 @@ python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸�
 |---|---|
 | 0.1.0（opt-level 3、thin LTO、未壓縮字型、egui 預設字型） | 18.7 MB（18,694,856 bytes） |
 | 0.2.0 | **12.0 MB（11,952,824 bytes，−36%）** |
+| 0.3.0（＋範本、轉場、雙語） | 12.2 MB（12,150,664 bytes） |
 
 - `Cargo.toml` 的 `[profile.release]`：`opt-level = "s"`、`lto = "fat"`、`codegen-units = 1`、`panic = "abort"`、`strip = true`。
   實測 `"s"`（12.01 MB）比 `"z"`（12.28 MB）還小、而且匯出速度快約 30%；繪圖／PNG／解壓縮相關的 crate（tiny-skia、png、fdeflate、miniz_oxide、brotli-decompressor）個別保留 `opt-level = 3`，
@@ -237,7 +324,8 @@ python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸�
 - Emoji 貼圖在 PNG / GUI 中以單色字形顯示（內附字型不含彩色 emoji）；影片中建議用 `src` 指定圖片
 - 字型子集涵蓋 Big5 + GB2312；罕用字會改用系統字型，若系統也沒有則顯示方框
 - GUI 預覽與 MoviePy 成品的文字斷行可能有 1～2 字差異（不同字型引擎）
-- 動畫只在 MoviePy 腳本中實作，編輯器中以黃色標籤標示（不做時間軸預覽播放）
+- 動畫與轉場只在 MoviePy 腳本中實作，編輯器中以黃色 / 藍色標籤標示（不做時間軸預覽播放）
+- 語言切換不會翻譯已輸入的文字；範本的預設文字在插入當下依目前語言產生
 
 ## 授權
 
@@ -246,21 +334,4 @@ python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸�
 
 ---
 
-## English
-
-**Whitebox Video Storyboard** is a Rust (egui/eframe) desktop app for laying out *white-model* (grey-box) video frames.
-Drag subtitle, title, subheading, text-card, multiple-choice options and 13 more component types onto a 16:9 / 9:16 / 1:1 / 4:5 canvas,
-organise them into timed scenes, then export:
-
-- per-scene draft PNGs rendered offscreen (tiny-skia + ab_glyph, bundled Noto Sans CJK TC subset so Chinese never renders as tofu),
-- `layout.json` with a documented schema ([docs/LAYOUT_SCHEMA.md](docs/LAYOUT_SCHEMA.md)),
-- an auto-generated `AGENT_GUIDE.md` telling an AI agent how to map each element to MoviePy v2 (`TextClip`, `ColorClip`, `ImageClip`, `CompositeVideoClip`, `with_position` / `with_start` / `with_duration`, CrossFadeIn/Out…),
-- `render_moviepy.py`, a working reference renderer for `moviepy>=2` that builds a placeholder video from the layout,
-- `storyboard.html`, a self-contained storyboard page (embedded scene images, element tables, timing, notes, MoviePy hints),
-- `storyboard.md`, a pure-text (Traditional Chinese) description of every scene and element (position, size, text, timing, animation) so an agent can understand the layout without images.
-
-Each export goes into a new `<project name|untitled>_<YYYYMMDD_HHMMSS>` folder inside the chosen location; formats are selectable in the export dialog (remembered between runs) or with `--formats png,overview,layout,project,guide,script,html,md,font`.
-
-Features: snapping to grid / title-safe / action-safe / other elements, resize handles, layer ordering, duplicate, undo/redo, multi-scene list with durations,
-JSON save/load, and a headless CLI (`--export project.json [out_base] [--formats …] [--no-subdir] [--name …]`; first stdout line = created folder) for CI and agents. The release binary is size-optimised (Linux: 18.7 MB → 12.0 MB in 0.2.0). Build with `cargo build --release`; prebuilt binaries for
-Linux, Windows and macOS are attached to each GitHub release.
+English documentation: **[README.en.md](README.en.md)**

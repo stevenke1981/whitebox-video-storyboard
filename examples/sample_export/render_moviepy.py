@@ -9,14 +9,21 @@ render_moviepy.py — build a placeholder video from a whitebox-video-storyboard
     python render_moviepy.py layout.json -o out.mp4
     python render_moviepy.py layout.json -o preview.mp4 --preview      # 1/3 解析度、12fps 快速預覽
     python render_moviepy.py layout.json --frames-dir frames            # 每個場景輸出一張中間影格 PNG
+    python render_moviepy.py layout.json --frames-dir f --transition-frames --no-video  # 也輸出轉場中間格 / also mid-transition frames
     python render_moviepy.py layout.json --font "C:/Windows/Fonts/msjh.ttc"
 
 Every element in layout.json becomes one clip:
   * x, y, w, h       -> clip size + .with_position((x, y))   (pixels, origin top-left)
   * start, end       -> .with_start(start) / .with_duration(end - start) inside its scene
   * z                -> order inside CompositeVideoClip (low z = drawn first)
-  * animation        -> CrossFadeIn/Out, sliding position functions, resized(pop), mask wipe (typewriter)
+  * animation        -> CrossFadeIn/Out, sliding position functions, resized(pop), mask wipe (typewriter),
+                        scroll_up (credits roll: bottom -> top over the element's time)
   * src (optional)   -> real ImageClip / VideoFileClip instead of a grey placeholder
+
+Every scene may carry `transition` = {type, duration}: the transition INTO that scene.
+It plays during the first `duration` seconds of the scene over a freeze frame of the
+previous scene's last frame, so scene timing / total length do not change:
+  crossfade, fade_black, slide_left, slide_up, wipe, zoom  (none = hard cut)
 
 CJK fonts: TextClip needs a font *file* that contains Chinese glyphs, otherwise
 you get empty boxes (tofu). Resolution order: --font, $WVS_FONT, layout["fonts"]["cjk"]
@@ -102,7 +109,7 @@ def resolve_font(cli_font: str | None, layout: dict, layout_dir: Path) -> str | 
                 return str(c)
             except Exception:
                 continue
-    print("[warn] 找不到 CJK 字型，中文可能顯示為方塊。請用 --font 指定。", file=sys.stderr)
+    print("[warn] no CJK font found / 找不到 CJK 字型 — Chinese may render as boxes; use --font", file=sys.stderr)
     return None
 
 
@@ -475,6 +482,10 @@ def finish(ctx: Ctx, clip, el: dict, x: int, y: int, w: int, h: int, start: floa
 
         clip = clip.resized(lambda t: k(t) if t < t_pop else 1.0)
         pos = lambda t: (x + w * (1 - (k(t) if t < t_pop else 1.0)) / 2, y + h * (1 - (k(t) if t < t_pop else 1.0)) / 2)  # noqa: E731
+    elif anim == "scroll_up":
+        # credits roll: from just below the frame to just above it over the element's time
+        span = max(dur, 0.01)
+        pos = lambda t: (x, ctx.H - (ctx.H + h) * min(1.0, t / span))  # noqa: E731
     elif anim == "typewriter" and clip.mask is not None:
         t_type = min(1.5, dur * 0.6)
 
@@ -506,6 +517,53 @@ def build_scene(ctx: Ctx, scene: dict):
     return CompositeVideoClip(clips, size=(ctx.W, ctx.H)).with_duration(dur)
 
 
+# --------------------------------------------------------------------------- transitions
+def apply_transition(ctx: Ctx, prev, cur, tr: dict | None, fps: float):
+    """Return `cur` with the transition INTO it applied (same duration as `cur`)."""
+    kind = (tr or {}).get("type", "none") or "none"
+    d = float((tr or {}).get("duration", 0) or 0)
+    if kind == "none" or d <= 0:
+        return cur
+    dur = cur.duration
+    d = min(d, dur * 0.9)
+    if kind == "fade_black":
+        return cur.with_effects([vfx.FadeIn(d)])
+    if prev is None:  # nothing to transition from
+        return cur
+    W, H = ctx.W, ctx.H
+    tail = prev.to_ImageClip(t=max(0.0, prev.duration - 1.0 / fps)).with_duration(d)
+
+    def k(t):
+        return ease(t / d) if t < d else 1.0
+
+    if kind == "crossfade":
+        top = cur.with_effects([vfx.CrossFadeIn(d)])
+    elif kind == "slide_left":
+        top = cur.with_position(lambda t: (int(round(W * (1 - k(t)))), 0))
+    elif kind == "slide_up":
+        top = cur.with_position(lambda t: (0, int(round(H * (1 - k(t))))))
+    elif kind == "wipe":
+        def mask_frame(t):
+            m = np.zeros((H, W), dtype=float)
+            m[:, : int(round(W * min(1.0, t / d)))] = 1.0
+            return m
+
+        top = cur.with_mask(VideoClip(mask_frame, is_mask=True, duration=dur))
+    elif kind == "zoom":
+        def z(t):
+            return 0.7 + 0.3 * k(t)
+
+        top = (
+            cur.resized(z)
+            .with_position(lambda t: (int(round(W * (1 - z(t)) / 2)), int(round(H * (1 - z(t)) / 2))))
+            .with_effects([vfx.CrossFadeIn(d)])
+        )
+    else:
+        print(f"[warn] unknown transition {kind!r}, using a hard cut", file=sys.stderr)
+        return cur
+    return CompositeVideoClip([tail, top], size=(W, H)).with_duration(dur)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Render a whitebox-video-storyboard layout.json with MoviePy >= 2")
     ap.add_argument("layout", nargs="?", default="layout.json")
@@ -517,6 +575,10 @@ def main(argv=None):
     ap.add_argument("--preview", action="store_true", help="fast preview: scale 1/3, 12 fps, ultrafast preset")
     ap.add_argument("--frames-dir", default=None, help="also save the middle frame of every scene as PNG")
     ap.add_argument("--no-video", action="store_true", help="skip writing the video (use with --frames-dir)")
+    ap.add_argument(
+        "--transition-frames", action="store_true", help="with --frames-dir: also save the middle of every scene transition"
+    )
+    ap.add_argument("--no-transitions", action="store_true", help="ignore scene transitions (hard cuts)")
     args = ap.parse_args(argv)
 
     layout_path = Path(args.layout).resolve()
@@ -534,19 +596,30 @@ def main(argv=None):
     if args.scenes:
         keep = {int(s) for s in args.scenes.split(",") if s.strip()}
         scenes = [s for i, s in enumerate(scenes, 1) if i in keep]
-    scene_clips = [build_scene(ctx, s) for s in scenes]
+    raw = [build_scene(ctx, s) for s in scenes]
+    scene_clips = []
+    for i, (s, c) in enumerate(zip(scenes, raw)):
+        tr = None if args.no_transitions else s.get("transition")
+        scene_clips.append(apply_transition(ctx, raw[i - 1] if i > 0 else None, c, tr, fps))
+    n_tr = sum(1 for a, b in zip(raw, scene_clips) if a is not b)
     video = concatenate_videoclips(scene_clips, method="chain")
-    print(f"[info] {len(scene_clips)} scenes, {video.duration:.2f}s, {ctx.W}x{ctx.H} @ {fps}fps")
+    print(f"[info] {len(scene_clips)} scenes ({n_tr} transitions), {video.duration:.2f}s, {ctx.W}x{ctx.H} @ {fps}fps")
 
     if args.frames_dir:
         out = Path(args.frames_dir)
         out.mkdir(parents=True, exist_ok=True)
         t0 = 0.0
-        for s, c in zip(scenes, scene_clips):
+        for i, (s, c) in enumerate(zip(scenes, scene_clips)):
             t = t0 + min(c.duration - 0.05, max(0.0, c.duration * 0.75))
             p = out / f"{s.get('id', 'scene')}_frame.png"
             video.save_frame(str(p), t=t)
             print(f"[info] frame {p} @ {t:.2f}s")
+            tr = s.get("transition") or {}
+            if args.transition_frames and c is not raw[i] and tr.get("duration"):
+                tt = t0 + min(float(tr["duration"]), c.duration * 0.9) / 2
+                p = out / f"{s.get('id', 'scene')}_transition_{tr.get('type')}.png"
+                video.save_frame(str(p), t=tt)
+                print(f"[info] transition frame {p} @ {tt:.2f}s")
             t0 += c.duration
     if not args.no_video:
         video.write_videofile(

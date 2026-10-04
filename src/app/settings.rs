@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use wvs::export::ExportOptions;
+use wvs::i18n::Lang;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -12,11 +13,13 @@ pub struct Settings {
     pub export_base: Option<PathBuf>,
     /// Create `<name>_<timestamp>` sub-folder (default on).
     pub export_subdir: bool,
+    /// UI / export language (None = default 繁體中文).
+    pub lang: Option<Lang>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { export: ExportOptions::default(), export_base: None, export_subdir: true }
+        Settings { export: ExportOptions::default(), export_base: None, export_subdir: true, lang: None }
     }
 }
 
@@ -24,7 +27,8 @@ pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
 }
 
-fn config_path() -> Option<PathBuf> {
+/// `<config>/whitebox-video-storyboard`.
+pub fn config_dir() -> Option<PathBuf> {
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
@@ -32,7 +36,16 @@ fn config_path() -> Option<PathBuf> {
     } else {
         std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| home_dir().map(|h| h.join(".config")))
     }?;
-    Some(base.join("whitebox-video-storyboard").join("settings.json"))
+    Some(base.join("whitebox-video-storyboard"))
+}
+
+fn config_path() -> Option<PathBuf> {
+    config_dir().map(|d| d.join("settings.json"))
+}
+
+/// Folder holding the user's saved scene templates (`*.json`).
+pub fn templates_dir() -> Option<PathBuf> {
+    config_dir().map(|d| d.join("templates"))
 }
 
 impl Settings {

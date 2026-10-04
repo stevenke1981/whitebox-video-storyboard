@@ -52,16 +52,17 @@ impl Default for Formats {
 
 impl Formats {
     /// `(cli key, 中文 label, file name)` for every format, in display order.
-    pub const INFO: [(&'static str, &'static str, &'static str); 9] = [
-        ("png", "場景草稿 PNG", "scene_XX_*.png"),
-        ("overview", "總覽圖", "storyboard_overview.png"),
-        ("layout", "版面資料 layout.json", "layout.json"),
-        ("project", "專案檔", "project.json"),
-        ("guide", "Agent 指南", "AGENT_GUIDE.md"),
-        ("script", "MoviePy 腳本", "render_moviepy.py"),
-        ("html", "HTML 分鏡頁", "storyboard.html"),
-        ("md", "Markdown 文字說明", "storyboard.md"),
-        ("font", "中文字型", "fonts/NotoSansCJKtc-Subset.otf"),
+    /// (key, zh label, en label, file name)
+    pub const INFO: [(&'static str, &'static str, &'static str, &'static str); 9] = [
+        ("png", "場景草稿 PNG", "Scene draft PNGs", "scene_XX_*.png"),
+        ("overview", "總覽圖", "Overview sheet", "storyboard_overview.png"),
+        ("layout", "版面資料 layout.json", "Layout data layout.json", "layout.json"),
+        ("project", "專案檔", "Project file", "project.json"),
+        ("guide", "Agent 指南", "Agent guide", "AGENT_GUIDE.md"),
+        ("script", "MoviePy 腳本", "MoviePy script", "render_moviepy.py"),
+        ("html", "HTML 分鏡頁", "HTML storyboard", "storyboard.html"),
+        ("md", "Markdown 文字說明", "Markdown description", "storyboard.md"),
+        ("font", "中文字型", "CJK font", "fonts/NotoSansCJKtc-Subset.otf"),
     ];
 
     pub const NONE: Formats = Formats {
@@ -113,12 +114,23 @@ impl Formats {
                 "sheet" => "overview",
                 k => k,
             };
-            *f.get_mut(key).ok_or_else(|| format!("未知格式 {raw:?}（可用：all,{}）", Self::keys().join(",")))? = true;
+            *f.get_mut(key).ok_or_else(|| {
+                tf!(
+                    "未知格式 {raw:?}（可用：all,{}）",
+                    "unknown format {raw:?} (available: all,{})",
+                    Self::keys().join(",")
+                )
+            })? = true;
         }
         if f == Formats::NONE {
-            return Err("至少要選一種輸出格式".into());
+            return Err(crate::i18n::t("至少要選一種輸出格式", "select at least one output format").into());
         }
         Ok(f)
+    }
+
+    /// Label of a format key in the current language.
+    pub fn label(key: &str) -> &'static str {
+        Self::INFO.iter().find(|i| i.0 == key).map(|i| crate::i18n::t(i.1, i.2)).unwrap_or("")
     }
 
     pub fn keys() -> Vec<&'static str> {
@@ -229,6 +241,11 @@ pub fn layout_json(p: &Project, font_rel: Option<&str>) -> Value {
             "background": s.background,
             "notes": s.notes,
             "draft_png": scene_png_name(i, &s.id),
+            "transition": {
+                "type": if i == 0 && s.transition.kind != crate::model::TransitionKind::FadeBlack { "none" } else { s.transition.kind.key() },
+                "duration": if s.transition.is_none() { 0.0 } else { round3(s.transition.duration) },
+                "moviepy": s.transition.kind.moviepy(),
+            },
             "elements": els,
         }));
     }
@@ -242,6 +259,8 @@ pub fn layout_json(p: &Project, font_rel: Option<&str>) -> Value {
         "fps": p.fps,
         "total_duration": round3(p.total_duration()),
         "coordinate_system": "pixels in target resolution; origin top-left; x,y = element top-left corner; times in seconds; element start/end are relative to the scene start",
+        "transition_policy": "scene.transition is the transition INTO that scene; it plays during the first `duration` seconds of the scene over the previous scene's last frame, so scene start times and total_duration are unchanged",
+        "language": crate::i18n::lang().code(),
         "safe_area": {
             "action_margin": ACTION_SAFE,
             "title_margin": TITLE_SAFE,
@@ -280,8 +299,9 @@ pub fn render_overview(p: &Project, scenes: &[tiny_skia::Pixmap]) -> Result<tiny
     let h = (head + rows as f32 * (th + cap + gap) + gap) as u32;
     let mut pm = tiny_skia::Pixmap::new(w, h).ok_or("overview size")?;
     pm.fill(tiny_skia::Color::from_rgba8(250, 250, 250, 255));
-    let title = format!(
+    let title = tf!(
         "{}  ·  {}×{}  ·  {} fps  ·  {} 個場景  ·  共 {:.1} 秒",
+        "{}  ·  {}×{}  ·  {} fps  ·  {} scenes  ·  {:.1} s total",
         p.name,
         p.canvas.width,
         p.canvas.height,
@@ -304,7 +324,7 @@ pub fn render_overview(p: &Project, scenes: &[tiny_skia::Pixmap]) -> Result<tiny
             },
         )
     };
-    text(&mut pm, R::new(gap, 10.0, w as f32 - 2.0 * gap, head - 20.0), &title, 34.0, [30, 30, 30, 255]);
+    text(&mut pm, R::new(gap, 10.0, w as f32 - 2.0 * gap, head - 20.0), &title, 24.0, [30, 30, 30, 255]);
     for (i, sp) in scenes.iter().enumerate() {
         let (c, r) = (i % cols, i / cols);
         let x = gap + c as f32 * (tw + gap);
@@ -331,8 +351,9 @@ pub fn render_overview(p: &Project, scenes: &[tiny_skia::Pixmap]) -> Result<tiny
         );
         let s = &p.scenes[i];
         let t0 = p.scene_start(i);
-        let cap_s = format!(
+        let cap_s = tf!(
             "#{} {}  ·  {:.1}s（{:.1}–{:.1}s）· {} 個元件",
+            "#{} {}  ·  {:.1}s ({:.1}–{:.1}s) · {} elements",
             i + 1,
             s.name,
             s.duration,
@@ -340,7 +361,7 @@ pub fn render_overview(p: &Project, scenes: &[tiny_skia::Pixmap]) -> Result<tiny
             t0 + s.duration,
             s.elements.len()
         );
-        text(&mut pm, R::new(x, y + th + 4.0, tw, cap - 8.0), &cap_s, 24.0, [40, 40, 40, 255]);
+        text(&mut pm, R::new(x, y + th + 4.0, tw, cap - 8.0), &cap_s, 17.0, [40, 40, 40, 255]);
     }
     Ok(pm)
 }
@@ -367,18 +388,19 @@ pub fn export_all(
 ) -> Result<ExportReport, String> {
     let f = opts.formats;
     if f == Formats::NONE {
-        return Err("至少要選一種輸出格式".into());
+        return Err(crate::i18n::t("至少要選一種輸出格式", "select at least one output format").into());
     }
     let mut p = p.clone();
     p.normalize();
-    std::fs::create_dir_all(out_dir).map_err(|e| format!("無法建立 {}: {e}", out_dir.display()))?;
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| tf!("無法建立 {}: {e}", "cannot create {}: {e}", out_dir.display()))?;
     let mut rep = ExportReport { dir: out_dir.to_path_buf(), ..Default::default() };
     let write = |rep: &mut ExportReport, name: &str, data: &[u8]| -> Result<(), String> {
         let path = out_dir.join(name);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, data).map_err(|e| format!("寫入 {} 失敗: {e}", path.display()))?;
+        std::fs::write(&path, data).map_err(|e| tf!("寫入 {} 失敗: {e}", "failed to write {}: {e}", path.display()))?;
         rep.files.push(path);
         Ok(())
     };

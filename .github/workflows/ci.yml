@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Linux GUI / build dependencies
         if: runner.os == 'Linux'
@@ -64,10 +64,25 @@ jobs:
           test ! -e out/sample_9x16/layout.json
           $B --export examples/sample_project.json out/md_only --no-subdir --formats md
           test "$(ls out/md_only)" = "storyboard.md"
+          # scene templates + English output
+          $B --templates
+          $B --templates --lang en | grep -q 'Credits roll'
+          $B --from-templates all out/templates_zh.json
+          $B --from-templates all out/templates_en.json --preset 9:16 --lang en --name "Template demo"
+          $B --add-template examples/sample_project.json quiz,outro --at 1 -o out/sample_plus.json
+          $B --export out/templates_zh.json out/tpl_zh --no-subdir
+          $B --export out/templates_en.json out/tpl_en --no-subdir --lang en
+          grep -q '版面文字說明' out/tpl_zh/storyboard.md
+          grep -q '# Layout description' out/tpl_en/storyboard.md
+          grep -q '"transition"' out/tpl_en/layout.json
+          grep -q '"language": "en"' out/tpl_en/layout.json
+          grep -q 'Scene transitions' out/tpl_en/AGENT_GUIDE.md
+          test "$(ls out/tpl_en/scene_*.png | wc -l)" -eq 14
+          WVS_LANG=en $B --help | grep -q 'USAGE'
 
       - name: Upload exported drafts
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: exported-drafts
           path: out/
@@ -77,19 +92,28 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install MoviePy
         run: pip install -r examples/requirements.txt
       - name: Render sample layout (preview)
         run: |
-          python examples/render_moviepy.py examples/layout.json -o preview.mp4 --preview --frames-dir frames
+          python examples/render_moviepy.py examples/layout.json -o preview.mp4 --preview --frames-dir frames --transition-frames
           ls -la preview.mp4 frames
-      - uses: actions/upload-artifact@v5
+      - uses: actions/download-artifact@v8
+        with:
+          name: exported-drafts
+          path: drafts
+      - name: Render 14-template project (English, 9:16) incl. every transition type
+        run: |
+          python examples/render_moviepy.py drafts/tpl_en/layout.json --preview --frames-dir frames_tpl --transition-frames --no-video
+          test "$(ls frames_tpl/*_transition_*.png | wc -l)" -ge 10
+      - uses: actions/upload-artifact@v7
         with:
           name: moviepy-preview
           path: |
             preview.mp4
             frames/
+            frames_tpl/
