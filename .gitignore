@@ -1,0 +1,10 @@
+/target
+/out
+/dist
+*.mp4
+__pycache__/
+*.pyc
+.venv/
+venv/
+frames/
+.DS_Store

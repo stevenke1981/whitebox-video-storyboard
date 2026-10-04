@@ -1,0 +1,39 @@
+[package]
+name = "whitebox-video-storyboard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "White-model (白模) video layout draft editor: drag subtitle/title/option components onto a canvas, export draft PNGs, layout.json, an agent guide and a MoviePy render script (egui/eframe)"
+license = "MIT"
+authors = ["Ke Sheng Da"]
+readme = "README.md"
+repository = "https://github.com/stevenke1981/whitebox-video-storyboard"
+keywords = ["storyboard", "moviepy", "video", "layout", "egui"]
+categories = ["graphics", "gui", "multimedia::video"]
+
+[lib]
+name = "wvs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "whitebox-video-storyboard"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui = { version = "0.36.2", default-features = false }
+rfd = { version = "0.17.2", default-features = false, features = ["gtk3"] }
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
