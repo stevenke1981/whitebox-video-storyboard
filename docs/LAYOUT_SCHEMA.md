@@ -30,7 +30,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `duration` | float | seconds |
 | `background` | colour | base colour of the frame (a full-frame `ColorClip`) |
 | `notes` | string | director / agent notes |
-| `draft_png` | string | file name of the exported white-model draft image |
+| `draft_png` | string | file name of the white-model draft image (exists only if the `png` format was exported) |
 | `elements` | array | elements sorted by `z` (bottom → top) |
 
 ### Element

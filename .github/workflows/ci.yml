@@ -48,9 +48,22 @@ jobs:
         run: |
           B=target/release/whitebox-video-storyboard
           $B --version
-          $B --export examples/sample_project.json out/sample
-          $B --export examples/sample_project_9x16.json out/sample_9x16 --safe-guides
-          ls -la out/sample
+          ls -l $B*
+          # default: creates out/sample_project_<YYYYMMDD_HHMMSS>/ with every format
+          D=$($B --export examples/sample_project.json out | head -n1)
+          echo "exported to $D"
+          ls -la "$D"
+          for f in scene_01_scene_1.png storyboard_overview.png layout.json project.json AGENT_GUIDE.md render_moviepy.py storyboard.html storyboard.md fonts/NotoSansCJKtc-Subset.otf; do
+            test -s "$D/$f" || { echo "missing $f"; exit 1; }
+          done
+          grep -q 'data:image/png;base64,' "$D/storyboard.html"
+          grep -q '版面文字說明' "$D/storyboard.md"
+          # format subsets / flat output
+          $B --export examples/sample_project_9x16.json out/sample_9x16 --no-subdir --safe-guides --formats png,html,md
+          test -s out/sample_9x16/storyboard.html && test -s out/sample_9x16/storyboard.md
+          test ! -e out/sample_9x16/layout.json
+          $B --export examples/sample_project.json out/md_only --no-subdir --formats md
+          test "$(ls out/md_only)" = "storyboard.md"
 
       - name: Upload exported drafts
         if: runner.os == 'Linux'

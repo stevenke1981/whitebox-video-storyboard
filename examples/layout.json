@@ -9,7 +9,7 @@
     "cjk": null
   },
   "fps": 30,
-  "generator": "whitebox-video-storyboard 0.1.0",
+  "generator": "whitebox-video-storyboard 0.2.0",
   "name": "MoviePy 小測驗（範例）",
   "project": "MoviePy 小測驗（範例）",
   "safe_area": {

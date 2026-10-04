@@ -99,7 +99,7 @@ pub fn snippet(kind: ElementKind) -> &'static str {
     }
 }
 
-pub fn agent_guide(p: &Project, font_rel: Option<&str>) -> String {
+pub fn agent_guide(p: &Project, font_rel: Option<&str>, f: &crate::export::Formats) -> String {
     let mut s = String::new();
     let (w, h) = (p.canvas.width, p.canvas.height);
     let _ = writeln!(s, "# AGENT_GUIDE — {}\n", p.name);
@@ -124,23 +124,40 @@ pub fn agent_guide(p: &Project, font_rel: Option<&str>) -> String {
 
     let _ = writeln!(s, "## 2. 檔案 / Files\n");
     let _ = writeln!(s, "| 檔案 | 用途 |\n|---|---|");
-    let _ = writeln!(s, "| `layout.json` | 完整版面資料（schema 見附錄） |");
-    let _ = writeln!(s, "| `project.json` | 編輯器專案檔，可再用 whitebox-video-storyboard 開啟 |");
-    for (i, sc) in p.scenes.iter().enumerate() {
-        let _ = writeln!(
-            s,
-            "| `{}` | 場景 {} 「{}」白模草稿圖 {}×{} |",
-            scene_png_name(i, &sc.id),
-            i + 1,
-            md_escape(&sc.name),
-            w,
-            h
-        );
+    if f.layout {
+        let _ = writeln!(s, "| `layout.json` | 完整版面資料（schema 見附錄） |");
     }
-    let _ = writeln!(s, "| `storyboard_overview.png` | 所有場景縮圖總覽 |");
-    let _ = writeln!(s, "| `render_moviepy.py` | 讀取 layout.json 直接合成佔位影片的參考實作（moviepy>=2） |");
-    if let Some(f) = font_rel {
-        let _ = writeln!(s, "| `{f}` | 內附中文字型（Noto Sans CJK TC 子集，SIL OFL 1.1），供 TextClip 使用 |");
+    if f.project {
+        let _ = writeln!(s, "| `project.json` | 編輯器專案檔，可再用 whitebox-video-storyboard 開啟 |");
+    }
+    if f.png {
+        for (i, sc) in p.scenes.iter().enumerate() {
+            let _ = writeln!(
+                s,
+                "| `{}` | 場景 {} 「{}」白模草稿圖 {}×{} |",
+                scene_png_name(i, &sc.id),
+                i + 1,
+                md_escape(&sc.name),
+                w,
+                h
+            );
+        }
+    }
+    if f.overview {
+        let _ = writeln!(s, "| `storyboard_overview.png` | 所有場景縮圖總覽 |");
+    }
+    if f.html {
+        let _ = writeln!(s, "| `storyboard.html` | 單一檔案的分鏡網頁（內嵌草稿圖、元件表、時間軸、MoviePy 提示） |");
+    }
+    if f.md {
+        let _ =
+            writeln!(s, "| `storyboard.md` | 純文字版面說明：不看圖也能理解每個元件的位置、大小、文字、時間與動畫 |");
+    }
+    if f.script {
+        let _ = writeln!(s, "| `render_moviepy.py` | 讀取 layout.json 直接合成佔位影片的參考實作（moviepy>=2） |");
+    }
+    if let Some(fr) = font_rel {
+        let _ = writeln!(s, "| `{fr}` | 內附中文字型（Noto Sans CJK TC 子集，SIL OFL 1.1），供 TextClip 使用 |");
     }
     s.push('\n');
 
@@ -249,16 +266,17 @@ pub fn agent_guide(p: &Project, font_rel: Option<&str>) -> String {
         let t0 = p.scene_start(i);
         let _ = writeln!(
             s,
-            "### 場景 {} — {}（`{}`，{:.2}s → {:.2}s，長 {:.2}s）\n\n![{}]({})\n",
+            "### 場景 {} — {}（`{}`，{:.2}s → {:.2}s，長 {:.2}s）\n",
             i + 1,
             sc.name,
             sc.id,
             t0,
             t0 + sc.duration,
             sc.duration,
-            sc.id,
-            scene_png_name(i, &sc.id)
         );
+        if f.png {
+            let _ = writeln!(s, "![{}]({})\n", sc.id, scene_png_name(i, &sc.id));
+        }
         if !sc.notes.is_empty() {
             let _ = writeln!(s, "備註：{}\n", sc.notes);
         }

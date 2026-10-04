@@ -16,7 +16,7 @@ impl Fonts {
     pub fn get() -> &'static Fonts {
         static F: OnceLock<Fonts> = OnceLock::new();
         F.get_or_init(|| {
-            let mut chain = vec![FontArc::try_from_slice(crate::fonts::CJK_FONT).expect("bundled font")];
+            let mut chain = vec![FontArc::try_from_slice(crate::fonts::cjk_font()).expect("bundled font")];
             if let Some((bytes, idx)) = crate::fonts::load_system_fallback()
                 && let Ok(f) = ab_glyph::FontVec::try_from_vec_and_index(bytes, idx)
             {

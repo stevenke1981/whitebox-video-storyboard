@@ -12,6 +12,10 @@
 3. **`AGENT_GUIDE.md`**——自動產生，告訴 AI Agent 如何把每種元件對應到 **Python MoviePy v2**
    （`TextClip`、`ColorClip`、`ImageClip`、`CompositeVideoClip`、`with_position` / `with_start` / `with_duration`…）
 4. **`render_moviepy.py`**——讀取 layout.json 直接合成佔位影片（`moviepy>=2`），Agent 可以在它上面替換素材
+5. **`storyboard.html`**——單一檔案的分鏡網頁（內嵌草稿圖、元件表、時間軸、備註、MoviePy 提示），用瀏覽器直接打開
+6. **`storyboard.md`**——純文字（繁體中文）版面說明：每個元件的位置、大小、文字、時間、動畫，**Agent 不看圖也能理解版面**
+
+匯出格式可以自由勾選，每次匯出會自動建立 **`<專案檔名>_<日期_時間>`** 資料夾，不會覆蓋上一次的結果。
 
 ![GUI](docs/images/gui.png)
 
@@ -86,7 +90,9 @@ cargo build --release
 2. 從左側 **元件庫** 拖曳元件到畫布，拖曳移動、拉控制點調整大小
 3. 右側 **屬性面板** 修改文字、顏色、時間、動畫；**圖層** 調整上下順序
 4. 下方 **場景列表** 新增鏡頭、設定每個場景的秒數
-5. **檔案 ▸ 匯出全部**（Ctrl+E）選擇資料夾
+5. **檔案 ▸ 匯出…**（Ctrl+E）開啟匯出視窗：勾選格式、選擇輸出位置，按「匯出」
+
+![匯出視窗](docs/images/export_dialog.png)
 
 | 快捷鍵 | 功能 |
 |---|---|
@@ -100,35 +106,83 @@ cargo build --release
 | Ctrl+E | 匯出 |
 | Ctrl+滾輪 | 縮放畫布 |
 
-### 匯出內容
+### 匯出資料夾
+
+每次匯出都會在「輸出位置」裡**新建一個資料夾**，所有檔案都放在裡面：
 
 ```
-out/
-├── scene_01_scene_1.png      # 每個場景的白模草稿（目標解析度，含類型/時間標籤）
-├── scene_02_scene_2.png
-├── storyboard_overview.png   # 所有場景總覽
-├── layout.json               # 版面資料（schema 見 docs/LAYOUT_SCHEMA.md）
-├── project.json              # 專案檔
-├── AGENT_GUIDE.md            # 給 AI Agent 的 MoviePy 配置說明（含逐場景元件表）
-├── render_moviepy.py         # 讀 layout.json 合成影片（moviepy>=2）
-└── fonts/NotoSansCJKtc-Subset.otf  # 給 TextClip 用的中文字型（+ OFL 授權）
+<輸出位置>/<專案檔名或 untitled>_<YYYYMMDD_HHMMSS>/     例：~/Documents/quiz_20261004_235314/
 ```
+
+- 專案檔名取自目前開啟的專案（`quiz.json` → `quiz`），尚未存檔時為 `untitled`；檔名中不合法的字元會換成 `_`
+- 時間是本機時間；同一秒內重複匯出會自動加上 `_2`、`_3`…
+- 輸出位置預設為「上次使用的位置」→ 專案檔所在資料夾 → 使用者的「文件」資料夾；可在匯出視窗中修改或按「選擇…」
+- 匯出完成後，視窗與狀態列會顯示建立的完整路徑，並可「開啟資料夾」或「複製路徑」
+- 取消勾選「建立『專案名_日期_時間』子資料夾」則直接寫入輸出位置（舊版行為）
+- 勾選的格式、草稿圖選項、輸出位置會記住，存在 `~/.config/whitebox-video-storyboard/settings.json`
+  （Windows：`%APPDATA%\whitebox-video-storyboard\`，macOS：`~/Library/Application Support/whitebox-video-storyboard/`）
+
+### 匯出格式
+
+| 勾選項目 | CLI 名稱 | 輸出檔案 | 說明 |
+|---|---|---|---|
+| 場景草稿 PNG | `png` | `scene_01_<id>.png`… | 每個場景的白模草稿（目標解析度，可含類型/時間標籤、安全框） |
+| 總覽圖 | `overview` | `storyboard_overview.png` | 所有場景縮圖總覽 |
+| 版面資料 layout.json | `layout` | `layout.json` | 版面資料（schema 見 [docs/LAYOUT_SCHEMA.md](docs/LAYOUT_SCHEMA.md)） |
+| 專案檔 | `project` | `project.json` | 可再用本工具開啟編輯的專案檔 |
+| Agent 指南 | `guide` | `AGENT_GUIDE.md` | 給 AI Agent 的 MoviePy 配置說明（逐場景元件表；只列出有勾選的檔案） |
+| MoviePy 腳本 | `script` | `render_moviepy.py` | 讀 layout.json 合成佔位影片（moviepy>=2） |
+| HTML 分鏡頁 | `html` | `storyboard.html` | **單一檔案**：草稿圖以 base64 內嵌，滑鼠移到元件會標示對應框與表格列；含時間軸、每場景甘特圖、元件表（位置、大小、時間、動畫、樣式）、導演/Agent 備註與 MoviePy 程式片段 |
+| Markdown 文字說明 | `md` | `storyboard.md` | **純文字**繁中說明：座標系與安全框、時間軸；每個場景有 ASCII 版面速寫，逐一描述元件的位置（九宮格區域＋像素＋百分比）、大小、文字內容、樣式、時間（場景內／絕對）、動畫、重疊關係與 MoviePy 提示，最後列出事件順序 |
+| 中文字型 | `font` | `fonts/NotoSansCJKtc-Subset.otf` | 給 TextClip 用的中文字型（＋ OFL 授權） |
+
+```
+quiz_20261004_235314/
+├── scene_01_scene_1.png      ├── storyboard.html
+├── scene_02_scene_2.png      ├── storyboard.md
+├── storyboard_overview.png   ├── AGENT_GUIDE.md
+├── layout.json               ├── render_moviepy.py
+├── project.json              └── fonts/NotoSansCJKtc-Subset.otf (+ LICENSE-OFL.txt)
+```
+
+完整範例：[`examples/sample_export/`](examples/sample_export/)（其中
+[`storyboard.md`](examples/sample_export/storyboard.md)、`storyboard.html` 可直接查看）。
 
 ## 命令列 / 無頭模式
 
 ```bash
-whitebox-video-storyboard --export project.json out_dir [--no-font] [--no-annotations] [--safe-guides] [--no-overview]
+# 在目前資料夾建立 sample_project_YYYYMMDD_HHMMSS/ 並輸出全部格式
+whitebox-video-storyboard --export examples/sample_project.json
+
+# 指定輸出位置與格式（stdout 第一行是建立的資料夾路徑，其後是每個檔案）
+whitebox-video-storyboard --export project.json ~/exports --formats png,html,md
+whitebox-video-storyboard --export project.json out --formats md --name quiz   # → out/quiz_YYYYMMDD_HHMMSS/storyboard.md
+
+# 直接寫入指定資料夾（不建立時間戳記子資料夾，適合 CI / 腳本）
+whitebox-video-storyboard --export project.json out_dir --no-subdir
+
 whitebox-video-storyboard --render project.json 2 scene2.png     # 只輸出第 2 個場景
 whitebox-video-storyboard --sample my.json --preset 9:16          # 產生範例專案
 whitebox-video-storyboard --help
 ```
+
+| 參數 | 說明 |
+|---|---|
+| `[out_base]` | 輸出位置，預設為目前資料夾 |
+| `--formats <list>` | 逗號分隔：`png,overview,layout,project,guide,script,html,md,font`，或 `all`（預設）。也接受別名 `json`→layout、`agent`→guide、`moviepy`/`py`→script、`markdown`→md、`fonts`→font |
+| `--no-subdir` | 不建立 `<名稱>_<時間>` 子資料夾，直接寫入 `out_base` |
+| `--name <name>` | 子資料夾名稱前綴（預設為專案檔名） |
+| `--no-font` / `--no-overview` | 從格式中移除字型 / 總覽圖（相容 0.1 版） |
+| `--no-annotations` / `--safe-guides` | PNG 不畫類型/時間標籤 / 畫出安全框 |
+
+腳本中取得輸出資料夾：`DIR=$(whitebox-video-storyboard --export p.json out | head -n1)`
 
 ## 用 MoviePy 合成影片
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r examples/requirements.txt           # moviepy>=2, numpy, pillow
-cd out_dir
+cd ~/exports/quiz_20261004_235314          # 匯出資料夾
 python render_moviepy.py layout.json -o draft.mp4 --preview      # 1/3 解析度、12fps 快速預覽
 python render_moviepy.py layout.json -o final.mp4                 # 原尺寸
 python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸出每個場景的影格
@@ -143,14 +197,33 @@ python render_moviepy.py layout.json --frames-dir frames --no-video   # 只輸�
 - 腳本會先自行斷行（中英混排、避頭點）、超出框高時自動縮小字級，並修正 MoviePy 2.x 在大 ascent 字型（Noto CJK）上
   會裁掉字尾的問題。
 
+`render_moviepy.py` 會依序在匯出資料夾內的 `fonts/` 找字型，所以整個匯出資料夾可以直接搬到別處執行。
+
 範例：`examples/layout.json`（範例 layout）、`examples/render_moviepy.py`（靜態腳本副本）、`examples/sample_export/`（完整匯出結果）。
 
 ## 給 AI Agent 的建議流程
 
 1. 人類用本工具排好白模 → 匯出
-2. Agent 讀 `AGENT_GUIDE.md` 與 `layout.json`（PNG 作為視覺確認）
+2. Agent 讀 `AGENT_GUIDE.md`、`storyboard.md`（純文字理解版面）與 `layout.json`（精確數值），PNG / `storyboard.html` 作為視覺確認
 3. 先跑 `render_moviepy.py --preview` 得到可播放的佔位版，再依 `notes` / `src` 替換素材、加配音與音樂
 4. 用 `--frames-dir` 輸出影格，與 `scene_*.png` 比對版面是否一致
+
+## 執行檔大小
+
+0.2.0 起針對發行版做了體積最佳化（Linux x86_64，GUI + CLI 單一執行檔）：
+
+| 版本 | 大小 |
+|---|---|
+| 0.1.0（opt-level 3、thin LTO、未壓縮字型、egui 預設字型） | 18.7 MB（18,694,856 bytes） |
+| 0.2.0 | **12.0 MB（11,952,824 bytes，−36%）** |
+
+- `Cargo.toml` 的 `[profile.release]`：`opt-level = "s"`、`lto = "fat"`、`codegen-units = 1`、`panic = "abort"`、`strip = true`。
+  實測 `"s"`（12.01 MB）比 `"z"`（12.28 MB）還小、而且匯出速度快約 30%；繪圖／PNG／解壓縮相關的 crate（tiny-skia、png、fdeflate、miniz_oxide、brotli-decompressor）個別保留 `opt-level = 3`，
+  因此最終執行檔又小了一點，匯出 3 個 1080p 場景約 0.4 秒。
+- **內嵌字型以 Brotli 壓縮**：`assets/fonts/NotoSansCJKtc-Subset.otf`（7.5 MB）→ `.otf.br`（5.0 MB），啟動時解壓縮一次（約 0.1 秒）。
+  修改字型後執行 `python tools/compress_font.py` 重新產生（需要 `pip install brotli`）。
+- 關閉 eframe 的 `default_fonts`（Ubuntu / Hack / Noto Emoji 約 1.1 MB），改用內附中文字型＋egui 的小型圖示字型；
+  image crate 只開 PNG；egui 只用 `glow` 後端（不含 wgpu）。
 
 ## 擴充新元件
 
@@ -182,8 +255,12 @@ organise them into timed scenes, then export:
 - per-scene draft PNGs rendered offscreen (tiny-skia + ab_glyph, bundled Noto Sans CJK TC subset so Chinese never renders as tofu),
 - `layout.json` with a documented schema ([docs/LAYOUT_SCHEMA.md](docs/LAYOUT_SCHEMA.md)),
 - an auto-generated `AGENT_GUIDE.md` telling an AI agent how to map each element to MoviePy v2 (`TextClip`, `ColorClip`, `ImageClip`, `CompositeVideoClip`, `with_position` / `with_start` / `with_duration`, CrossFadeIn/Out…),
-- `render_moviepy.py`, a working reference renderer for `moviepy>=2` that builds a placeholder video from the layout.
+- `render_moviepy.py`, a working reference renderer for `moviepy>=2` that builds a placeholder video from the layout,
+- `storyboard.html`, a self-contained storyboard page (embedded scene images, element tables, timing, notes, MoviePy hints),
+- `storyboard.md`, a pure-text (Traditional Chinese) description of every scene and element (position, size, text, timing, animation) so an agent can understand the layout without images.
+
+Each export goes into a new `<project name|untitled>_<YYYYMMDD_HHMMSS>` folder inside the chosen location; formats are selectable in the export dialog (remembered between runs) or with `--formats png,overview,layout,project,guide,script,html,md,font`.
 
 Features: snapping to grid / title-safe / action-safe / other elements, resize handles, layer ordering, duplicate, undo/redo, multi-scene list with durations,
-JSON save/load, and a headless CLI (`--export project.json out_dir`) for CI and agents. Build with `cargo build --release`; prebuilt binaries for
+JSON save/load, and a headless CLI (`--export project.json [out_base] [--formats …] [--no-subdir] [--name …]`; first stdout line = created folder) for CI and agents. The release binary is size-optimised (Linux: 18.7 MB → 12.0 MB in 0.2.0). Build with `cargo build --release`; prebuilt binaries for
 Linux, Windows and macOS are attached to each GitHub release.

@@ -65,7 +65,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/$BIN$EXT" "dist/$PKG/"
           cp README.md LICENSE "dist/$PKG/"
           cp -r examples "dist/$PKG/examples"
-          mkdir -p "dist/$PKG/fonts" && cp assets/fonts/* "dist/$PKG/fonts/"
+          mkdir -p "dist/$PKG/fonts" && cp assets/fonts/NotoSansCJKtc-Subset.otf assets/fonts/LICENSE-OFL.txt "dist/$PKG/fonts/"
           cd dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "$PKG.zip" "$PKG" > /dev/null

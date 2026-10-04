@@ -1,6 +1,6 @@
 # AGENT_GUIDE — MoviePy 小測驗（範例）
 
-> 由 whitebox-video-storyboard 0.1.0 自動產生。本文件告訴 AI Agent 如何依照白模草稿（`scene_*.png`）與 `layout.json`，
+> 由 whitebox-video-storyboard 0.2.0 自動產生。本文件告訴 AI Agent 如何依照白模草稿（`scene_*.png`）與 `layout.json`，
 > 使用 **Python MoviePy v2**（`moviepy>=2`）把畫面配置成影片。
 > Generated file — tells an agent how to build this video with MoviePy v2 from `layout.json`.
 
@@ -23,6 +23,8 @@
 | `scene_02_scene_2.png` | 場景 2 「題目」白模草稿圖 1920×1080 |
 | `scene_03_scene_3.png` | 場景 3 「結尾」白模草稿圖 1920×1080 |
 | `storyboard_overview.png` | 所有場景縮圖總覽 |
+| `storyboard.html` | 單一檔案的分鏡網頁（內嵌草稿圖、元件表、時間軸、MoviePy 提示） |
+| `storyboard.md` | 純文字版面說明：不看圖也能理解每個元件的位置、大小、文字、時間與動畫 |
 | `render_moviepy.py` | 讀取 layout.json 直接合成佔位影片的參考實作（moviepy>=2） |
 
 ## 3. 畫布與時間軸 / Canvas & timeline
@@ -361,7 +363,7 @@ seconds. Colours are `"#RRGGBB"` strings.
 | `duration` | float | seconds |
 | `background` | colour | base colour of the frame (a full-frame `ColorClip`) |
 | `notes` | string | director / agent notes |
-| `draft_png` | string | file name of the exported white-model draft image |
+| `draft_png` | string | file name of the white-model draft image (exists only if the `png` format was exported) |
 | `elements` | array | elements sorted by `z` (bottom → top) |
 
 ### Element

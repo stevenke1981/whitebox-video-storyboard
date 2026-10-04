@@ -3,11 +3,13 @@
 mod canvas;
 mod paint;
 mod panels;
+mod settings;
 
 use eframe::egui::{self, Color32, RichText};
+use settings::Settings;
 use std::path::PathBuf;
 use std::sync::Arc;
-use wvs::export::{ExportOptions, export_all};
+use wvs::export::{ExportOptions, Formats, export_to, project_dir_name};
 use wvs::model::{Element, ElementKind, Project, Scene};
 
 pub const ACCENT: Color32 = Color32::from_rgb(240, 128, 20);
@@ -68,6 +70,10 @@ pub struct App {
     pub guides: Vec<Guide>,
     pub status: Option<(bool, String)>,
     pub export_opts: ExportOptions,
+    pub settings: Settings,
+    pub show_export: bool,
+    pub export_base: String,
+    pub last_export: Option<(PathBuf, usize)>,
     pub show_help: bool,
     pub show_about: bool,
     pub confirm_discard: Option<PendingAction>,
@@ -81,22 +87,27 @@ pub enum PendingAction {
 }
 
 fn setup_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert("noto_cjk_tc".into(), Arc::new(egui::FontData::from_static(wvs::fonts::CJK_FONT)));
-    for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-        let list = fonts.families.entry(fam).or_default();
-        let at = 1.min(list.len());
-        list.insert(at, "noto_cjk_tc".into());
-    }
+    // eframe's `default_fonts` feature is off to save ~1.1 MB: the bundled CJK font
+    // covers Latin + CJK text and egui's small icon font covers the toolbar icons.
+    let mut fonts = egui::FontDefinitions::empty();
+    fonts.font_data.insert("noto_cjk_tc".into(), Arc::new(egui::FontData::from_static(wvs::fonts::cjk_font())));
+    fonts.font_data.insert(
+        "emoji-icon-font".into(),
+        Arc::new(
+            egui::FontData::from_static(epaint_default_fonts::EMOJI_ICON)
+                .tweak(egui::FontTweak { scale: 0.90, ..Default::default() }),
+        ),
+    );
+    let mut chain = vec!["noto_cjk_tc".to_string(), "emoji-icon-font".to_string()];
     // Last-resort system font for characters outside the bundled subset.
     if let Some((bytes, index)) = wvs::fonts::load_system_fallback() {
         let mut fd = egui::FontData::from_owned(bytes);
         fd.index = index;
         fonts.font_data.insert("system_cjk".into(), Arc::new(fd));
-        for fam in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-            fonts.families.entry(fam).or_default().push("system_cjk".into());
-        }
+        chain.push("system_cjk".into());
     }
+    fonts.families.insert(egui::FontFamily::Proportional, chain.clone());
+    fonts.families.insert(egui::FontFamily::Monospace, chain);
     ctx.set_fonts(fonts);
 }
 
@@ -121,6 +132,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, open: Option<String>) -> App {
         setup_fonts(&cc.egui_ctx);
         apply_theme(&cc.egui_ctx);
+        let settings = Settings::load();
         let mut app = App {
             project: wvs::sample::sample_project("16:9"),
             path: None,
@@ -141,7 +153,11 @@ impl App {
             drag: None,
             guides: vec![],
             status: Some((true, "已載入範例專案。從左側拖曳元件到畫布開始編排。".into())),
-            export_opts: ExportOptions::default(),
+            export_opts: settings.export.clone(),
+            export_base: String::new(),
+            settings,
+            show_export: false,
+            last_export: None,
             show_help: false,
             show_about: false,
             confirm_discard: None,
@@ -348,15 +364,148 @@ impl App {
         }
     }
 
+    /// Open the export dialog (Ctrl+E).
     pub fn export_dialog(&mut self) {
-        let mut dlg = rfd::FileDialog::new().set_title("選擇匯出資料夾");
-        if let Some(p) = self.path.as_ref().and_then(|p| p.parent()) {
-            dlg = dlg.set_directory(p);
+        if self.export_base.is_empty() {
+            self.export_base = self.default_export_base().display().to_string();
         }
-        let Some(dir) = dlg.pick_folder() else { return };
-        match export_all(&self.project, None, &dir, &self.export_opts) {
-            Ok(rep) => self.set_status(true, format!("匯出完成：{} 個檔案 → {}", rep.files.len(), dir.display())),
+        self.show_export = true;
+    }
+
+    fn default_export_base(&self) -> PathBuf {
+        if let Some(b) = self.settings.export_base.as_ref().filter(|b| b.is_dir()) {
+            return b.clone();
+        }
+        if let Some(d) = self.path.as_ref().and_then(|p| p.parent()).filter(|d| d.is_dir()) {
+            return d.to_path_buf();
+        }
+        if let Some(h) = settings::home_dir() {
+            let docs = h.join("Documents");
+            return if docs.is_dir() { docs } else { h };
+        }
+        PathBuf::from(".")
+    }
+
+    pub fn export_name(&self) -> String {
+        project_dir_name(self.path.as_deref())
+    }
+
+    pub fn do_export(&mut self) {
+        let base = PathBuf::from(self.export_base.trim());
+        let raw = self.path.as_ref().filter(|_| !self.dirty).and_then(|p| std::fs::read_to_string(p).ok());
+        match export_to(
+            &self.project,
+            raw.as_deref(),
+            &base,
+            &self.export_name(),
+            self.settings.export_subdir,
+            &self.export_opts,
+        ) {
+            Ok(rep) => {
+                self.set_status(true, format!("匯出完成：{} 個檔案 → {}", rep.files.len(), rep.dir.display()));
+                self.last_export = Some((rep.dir.clone(), rep.files.len()));
+                self.settings.export = self.export_opts.clone();
+                self.settings.export_base = Some(base);
+                self.settings.save();
+            }
             Err(e) => self.set_status(false, format!("匯出失敗：{e}")),
+        }
+    }
+
+    fn export_window(&mut self, ctx: &egui::Context) {
+        if !self.show_export {
+            return;
+        }
+        let mut open = true;
+        let mut do_export = false;
+        egui::Window::new("匯出草稿").open(&mut open).resizable(false).collapsible(false).default_width(460.0).show(
+            ctx,
+            |ui| {
+                ui.label(RichText::new("輸出格式").strong().color(ACCENT));
+                egui::Grid::new("fmt_grid").num_columns(2).spacing([18.0, 4.0]).show(ui, |ui| {
+                    for (n, (key, label, file)) in Formats::INFO.iter().enumerate() {
+                        if let Some(b) = self.export_opts.formats.get_mut(key) {
+                            ui.checkbox(b, *label).on_hover_text(*file);
+                        }
+                        if n % 2 == 1 {
+                            ui.end_row();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.small_button("全選").clicked() {
+                        self.export_opts.formats = Formats::default();
+                    }
+                    if ui.small_button("全不選").clicked() {
+                        self.export_opts.formats = Formats::NONE;
+                    }
+                    if ui
+                        .small_button("只要給 Agent 的文字")
+                        .on_hover_text("layout.json + AGENT_GUIDE.md + storyboard.md")
+                        .clicked()
+                    {
+                        self.export_opts.formats = Formats { layout: true, guide: true, md: true, ..Formats::NONE };
+                    }
+                });
+                ui.add_space(4.0);
+                ui.label(RichText::new("草稿圖選項").strong().color(ACCENT));
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.export_opts.annotations, "類型 / 時間標籤");
+                    ui.checkbox(&mut self.export_opts.safe_guides, "安全框參考線");
+                });
+                ui.add_space(4.0);
+                ui.label(RichText::new("輸出位置").strong().color(ACCENT));
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.export_base).desired_width(330.0));
+                    if ui.button("選擇…").clicked() {
+                        let mut dlg = rfd::FileDialog::new().set_title("選擇匯出位置");
+                        if !self.export_base.is_empty() {
+                            dlg = dlg.set_directory(&self.export_base);
+                        }
+                        if let Some(d) = dlg.pick_folder() {
+                            self.export_base = d.display().to_string();
+                        }
+                    }
+                });
+                ui.checkbox(&mut self.settings.export_subdir, "建立「專案名_日期_時間」子資料夾（建議）");
+                let target = if self.settings.export_subdir {
+                    PathBuf::from(&self.export_base).join(format!("{}_YYYYMMDD_HHMMSS", self.export_name()))
+                } else {
+                    PathBuf::from(&self.export_base)
+                };
+                ui.label(RichText::new(format!("將輸出到：{}", target.display())).small().weak());
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let ok = self.export_opts.formats != Formats::NONE && !self.export_base.trim().is_empty();
+                    if ui.add_enabled(ok, egui::Button::new(RichText::new("⬇ 匯出").strong())).clicked() {
+                        do_export = true;
+                    }
+                    if !ok {
+                        ui.label(RichText::new("請至少選一種格式並指定位置").color(ERR_RED).small());
+                    }
+                });
+                if let Some((dir, n)) = self.last_export.clone() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(format!("✔ 已匯出 {n} 個檔案到：")).color(OK_GREEN));
+                    ui.label(RichText::new(dir.display().to_string()).monospace());
+                    ui.horizontal(|ui| {
+                        if ui.button("開啟資料夾").clicked() {
+                            settings::open_folder(&dir);
+                        }
+                        if ui.button("複製路徑").clicked() {
+                            ui.ctx().copy_text(dir.display().to_string());
+                        }
+                    });
+                }
+            },
+        );
+        if do_export {
+            self.do_export();
+        }
+        if !open {
+            self.show_export = false;
+            self.settings.export = self.export_opts.clone();
+            self.settings.save();
         }
     }
 
@@ -491,7 +640,8 @@ impl App {
                     self.save(true);
                 }
                 ui.separator();
-                if ui.button("匯出全部（PNG + layout.json + AGENT_GUIDE + MoviePy）…  Ctrl+E").clicked() {
+                if ui.button("匯出…（選擇格式：PNG / HTML / Markdown / layout.json …）  Ctrl+E").clicked()
+                {
                     ui.close();
                     self.export_dialog();
                 }
@@ -542,12 +692,6 @@ impl App {
                 ui.checkbox(&mut self.snap, "吸附（格線 / 安全框 / 其他元件）");
                 ui.checkbox(&mut self.show_safe, "顯示 Title-safe / Action-safe");
                 ui.checkbox(&mut self.annotations, "顯示類型 / 時間標籤");
-                ui.separator();
-                ui.label("匯出 PNG 選項");
-                ui.checkbox(&mut self.export_opts.annotations, "PNG 含類型 / 時間標籤");
-                ui.checkbox(&mut self.export_opts.safe_guides, "PNG 含安全框");
-                ui.checkbox(&mut self.export_opts.overview, "輸出 storyboard_overview.png");
-                ui.checkbox(&mut self.export_opts.copy_font, "複製中文字型到 fonts/");
             });
             ui.menu_button("說明", |ui| {
                 if ui.button("操作說明…").clicked() {
@@ -598,7 +742,7 @@ impl App {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .button(RichText::new("⬇ 匯出草稿").strong().color(ACCENT))
-                    .on_hover_text("Ctrl+E：PNG + layout.json + AGENT_GUIDE.md + render_moviepy.py")
+                    .on_hover_text("Ctrl+E：選擇格式並匯出到「專案名_日期_時間」資料夾")
                     .clicked()
                 {
                     self.export_dialog();
@@ -651,7 +795,7 @@ impl App {
                     ("] / [", "上移 / 下移圖層"),
                     ("Ctrl+Z / Ctrl+Y", "復原 / 重做"),
                     ("Ctrl+S / Ctrl+O", "儲存 / 開啟專案"),
-                    ("Ctrl+E", "匯出草稿（PNG、layout.json、AGENT_GUIDE.md、render_moviepy.py）"),
+                    ("Ctrl+E", "匯出（PNG、HTML、Markdown、layout.json、AGENT_GUIDE.md、render_moviepy.py…）"),
                     ("Esc", "取消選取"),
                 ] {
                     ui.label(RichText::new(k).strong());
@@ -719,6 +863,7 @@ impl eframe::App for App {
             .frame(egui::Frame::NONE.fill(Color32::from_rgb(22, 23, 26)).inner_margin(0))
             .show(ui, |ui| self.canvas(ui));
         self.windows(&ctx);
+        self.export_window(&ctx);
         self.clamp_scene();
         self.commit_history(&ctx, before);
     }

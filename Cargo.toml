@@ -1,6 +1,6 @@
 [package]
 name = "whitebox-video-storyboard"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "White-model (白模) video layout draft editor: drag subtitle/title/option components onto a canvas, export draft PNGs, layout.json, an agent guide and a MoviePy render script (egui/eframe)"
@@ -20,8 +20,12 @@ name = "whitebox-video-storyboard"
 path = "src/main.rs"
 
 [dependencies]
-eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+# glow (OpenGL) renderer only; no default fonts (we embed our own CJK font + the egui icon font).
+eframe = { version = "0.36.2", default-features = false, features = ["glow", "wayland", "x11"] }
 egui = { version = "0.36.2", default-features = false }
+epaint_default_fonts = "0.36.2"
+brotli-decompressor = { version = "5", default-features = false, features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rfd = { version = "0.17.2", default-features = false, features = ["gtk3"] }
 tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
@@ -29,11 +33,26 @@ ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
 
+# Size-optimised release build (see README「執行檔大小」).
+# Benchmarked on Linux x86_64: opt-level "s" 12.0 MB < "z" 12.3 MB < 3 13.2 MB.
 [profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 4
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
 strip = true
+
+# Hot pixel / decompression code keeps full speed; costs only a few KB.
+[profile.release.package.tiny-skia]
+opt-level = 3
+[profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.png]
+opt-level = 3
+[profile.release.package.fdeflate]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
 
 [profile.dev.package."*"]
 opt-level = 2

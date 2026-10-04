@@ -396,7 +396,7 @@ impl App {
         section(ui, "圖層（上 = 最上層）");
         ui.horizontal(|ui| {
             let sel = self.selected_index().is_some();
-            if ui.add_enabled(sel, egui::Button::new("⏫ 置頂")).clicked() {
+            if ui.add_enabled(sel, egui::Button::new("置頂")).clicked() {
                 self.move_layer(10_000);
             }
             if ui.add_enabled(sel, egui::Button::new("⬆")).clicked() {
@@ -405,7 +405,7 @@ impl App {
             if ui.add_enabled(sel, egui::Button::new("⬇")).clicked() {
                 self.move_layer(-1);
             }
-            if ui.add_enabled(sel, egui::Button::new("⏬ 置底")).clicked() {
+            if ui.add_enabled(sel, egui::Button::new("置底")).clicked() {
                 self.move_layer(-10_000);
             }
             if ui.add_enabled(sel, egui::Button::new("🗐")).on_hover_text("複製").clicked() {
@@ -422,8 +422,7 @@ impl App {
             let is_sel = self.selected.as_deref() == Some(e.id.as_str());
             ui.horizontal(|ui| {
                 ui.checkbox(&mut e.visible, "").on_hover_text("顯示");
-                let lock = if e.locked { "🔒" } else { "🔓" };
-                if ui.small_button(lock).on_hover_text("鎖定").clicked() {
+                if ui.selectable_label(e.locked, "鎖").on_hover_text("鎖定（不可拖曳）").clicked() {
                     e.locked = !e.locked;
                 }
                 let txt = format!("{} {}  ·  {}", e.kind.info().icon, e.display_name(), e.id);

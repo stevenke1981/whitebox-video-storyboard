@@ -102,7 +102,10 @@ fn paint_text(
         );
         return;
     }
-    let g = text_galley(painter, text, size_s, c32(color), rect.width().max(size_s), align);
+    // Break lines with the same metrics as the PNG exporter (target resolution), so the
+    // editor shows exactly the line breaks of the exported drafts; egui must not re-wrap.
+    let lines = wvs::raster::Fonts::get().wrap(text, size.max(1.0), r.w.max(size)).join("\n");
+    let g = text_galley(painter, &lines, size_s, c32(color), f32::INFINITY, align);
     let gs = g.rect.size();
     let x = match align {
         Align::Left => rect.left(),
