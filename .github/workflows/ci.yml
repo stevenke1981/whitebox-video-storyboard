@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux GUI / build dependencies
         if: runner.os == 'Linux'
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload exported drafts
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: exported-drafts
           path: out/
@@ -64,8 +64,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install MoviePy
@@ -74,7 +74,7 @@ jobs:
         run: |
           python examples/render_moviepy.py examples/layout.json -o preview.mp4 --preview --frames-dir frames
           ls -la preview.mp4 frames
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: moviepy-preview
           path: |
