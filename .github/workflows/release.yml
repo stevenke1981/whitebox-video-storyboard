@@ -126,7 +126,7 @@ jobs:
             echo
             echo "| Platform | File |"
             echo "|---|---|"
-            for f in dist/*.zip; do n=$(basename "$f"); echo "| ${n#whitebox-video-storyboard-$VERSION-} | \`$n\` |"; done
+            for f in dist/*.zip; do n=$(basename "$f"); p=${n#whitebox-video-storyboard-$VERSION-}; echo "| ${p%.zip} | \`$n\` |"; done
             echo
             echo "SHA-256 checksums: \`SHA256SUMS.txt\`."
             echo
